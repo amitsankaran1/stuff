@@ -52,7 +52,7 @@ export default async function LoginPage({
 
         <button
           type="submit"
-          className="rounded-xl bg-current px-4 py-2.5 text-sm font-medium text-[var(--stuff-bg)]"
+          className="rounded-xl bg-[var(--stuff-fg)] px-4 py-2.5 text-sm font-medium text-[var(--stuff-bg)]"
         >
           Sign in
         </button>

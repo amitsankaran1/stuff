@@ -29,8 +29,8 @@ export function BottomNav() {
             className={clsx(
               'shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
               active
-                ? 'bg-current text-[var(--stuff-bg)]'
-                : 'text-[var(--stuff-muted)] hover:text-current',
+                ? 'bg-[var(--stuff-fg)] text-[var(--stuff-bg)]'
+                : 'text-[var(--stuff-muted)] hover:text-[var(--stuff-fg)]',
             )}
           >
             {item.label}
