@@ -4,7 +4,8 @@ import type {
   QueryDatabaseParameters,
   QueryDatabaseResponse,
 } from '@notionhq/client/build/src/api-endpoints.js';
-import { mapTask } from '@stuff/notion';
+import { buildTaskCreatePayload, mapTask } from '@stuff/notion';
+import { TaskCreate } from '@stuff/shared';
 import { auth } from '@/lib/auth';
 import { getNotion, TASKS_DB_ID } from '@/lib/notion';
 import { filterForView, isViewKey } from '@/lib/views';
@@ -48,4 +49,22 @@ export async function GET(req: NextRequest) {
     { view: viewParam, count: tasks.length, tasks },
     { headers: { 'cache-control': 'no-store' } },
   );
+}
+
+export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session) return new NextResponse('Unauthorized', { status: 401 });
+  if (!TASKS_DB_ID) return new NextResponse('NOTION_TASKS_DB_ID not set', { status: 500 });
+
+  const body = await req.json().catch(() => null);
+  const parsed = TaskCreate.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.format() }, { status: 400 });
+  }
+
+  const { notion, enqueue } = getNotion();
+  const payload = buildTaskCreatePayload(TASKS_DB_ID, parsed.data);
+  const created = await enqueue(() => notion.pages.create(payload));
+  const task = mapTask(created as PageObjectResponse);
+  return NextResponse.json({ task }, { status: 201 });
 }

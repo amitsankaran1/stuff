@@ -58,13 +58,9 @@ export const TaskCreate = Task.omit({
   updatedAt: true,
   completedAt: true,
   lastRemindedAt: true,
-}).partial({
-  status: true,
-  source: true,
-  tags: true,
-  checklist: true,
-  notes: true,
-});
+})
+  .partial()
+  .required({ name: true });
 export type TaskCreate = z.infer<typeof TaskCreate>;
 
 export const TaskUpdate = Task.partial().required({ id: true });
