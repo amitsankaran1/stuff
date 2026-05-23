@@ -1,3 +1,3 @@
-export * from './schema.js';
-export * from './client.js';
-export * from './mappers.js';
+export * from './schema';
+export * from './client';
+export * from './mappers';

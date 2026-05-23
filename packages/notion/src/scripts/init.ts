@@ -1,7 +1,7 @@
 import { config as loadEnv } from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { createStuffNotionClient } from '../client.js';
+import { createStuffNotionClient } from '../client';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../../../..');
@@ -12,7 +12,7 @@ import {
   areasProperties,
   projectsProperties,
   tasksProperties,
-} from '../schema.js';
+} from '../schema';
 
 const token = process.env.NOTION_TOKEN;
 const parentPageId = process.env.NOTION_PARENT_PAGE_ID;

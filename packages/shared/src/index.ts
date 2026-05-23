@@ -1,3 +1,3 @@
-export * from './task.js';
-export * from './recurrence.js';
-export * from './push.js';
+export * from './task';
+export * from './recurrence';
+export * from './push';

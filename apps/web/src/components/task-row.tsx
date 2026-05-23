@@ -1,0 +1,58 @@
+import type { Task } from '@stuff/shared';
+import clsx from 'clsx';
+
+function formatDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+export function TaskRow({ task }: { task: Task }) {
+  const done = task.status === 'Done' || task.status === 'Cancelled';
+  const when = formatDate(task.when);
+  const deadline = formatDate(task.deadline);
+  const agentRecent =
+    task.agentTouchedAt && Date.now() - new Date(task.agentTouchedAt).getTime() < 24 * 60 * 60 * 1000;
+
+  return (
+    <li
+      className={clsx(
+        'flex items-start gap-3 border-b border-[var(--stuff-border)] px-4 py-3',
+        done && 'opacity-50',
+      )}
+    >
+      <span
+        className={clsx(
+          'mt-1 size-4 shrink-0 rounded-full border',
+          done
+            ? 'border-current bg-current'
+            : 'border-[var(--stuff-border)]',
+        )}
+        aria-hidden
+      />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-baseline gap-2">
+          <span className={clsx('truncate text-[15px]', done && 'line-through')}>{task.name}</span>
+          {agentRecent ? (
+            <span className="size-1.5 shrink-0 rounded-full bg-pink-500" title="Touched by an agent" />
+          ) : null}
+        </div>
+        {(when || deadline || task.tags.length > 0) && (
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--stuff-muted)]">
+            {when ? <span>{when}</span> : null}
+            {deadline ? <span className="text-red-500">⚑ {deadline}</span> : null}
+            {task.tags.slice(0, 3).map((t) => (
+              <span key={t}>#{t}</span>
+            ))}
+          </div>
+        )}
+        {task.proposedStatus ? (
+          <div className="mt-1 inline-flex w-fit items-center gap-1 rounded-md bg-pink-500/10 px-2 py-0.5 text-xs text-pink-600 dark:text-pink-300">
+            Agent proposes: {task.proposedStatus}
+          </div>
+        ) : null}
+      </div>
+    </li>
+  );
+}
