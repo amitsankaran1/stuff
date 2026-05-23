@@ -1,0 +1,24 @@
+{
+  "name": "stuff",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A fast, Notion-backed task manager. Things-style methodology, agent-friendly.",
+  "packageManager": "pnpm@11.2.2",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.3"
+  }
+}

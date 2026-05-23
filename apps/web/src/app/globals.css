@@ -1,0 +1,27 @@
+@import 'tailwindcss';
+
+:root {
+  color-scheme: light dark;
+  --stuff-bg: #fafaf9;
+  --stuff-fg: #1c1917;
+  --stuff-muted: #78716c;
+  --stuff-border: #e7e5e4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --stuff-bg: #0c0a09;
+    --stuff-fg: #fafaf9;
+    --stuff-muted: #a8a29e;
+    --stuff-border: #292524;
+  }
+}
+
+html,
+body {
+  background: var(--stuff-bg);
+  color: var(--stuff-fg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
