@@ -130,7 +130,7 @@ export function TaskDetailSheet({ task, onClose }: Props) {
             <button
               type="button"
               onClick={save}
-              className="rounded-xl bg-current px-4 py-2 text-sm font-medium text-[var(--stuff-bg)]"
+              className="rounded-xl bg-[var(--stuff-fg)] px-4 py-2 text-sm font-medium text-[var(--stuff-bg)]"
             >
               Save
             </button>

@@ -12,7 +12,7 @@ export function QuickEntryFab() {
         type="button"
         aria-label="New task"
         onClick={() => setOpen(true)}
-        className="fixed bottom-20 right-5 z-20 flex size-12 items-center justify-center rounded-full bg-current text-2xl text-[var(--stuff-bg)] shadow-lg"
+        className="fixed bottom-20 right-5 z-20 flex size-12 items-center justify-center rounded-full bg-[var(--stuff-fg)] text-2xl text-[var(--stuff-bg)] shadow-lg"
         style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)' }}
       >
         <span aria-hidden>+</span>
@@ -57,7 +57,7 @@ function QuickEntrySheet({ open, onClose }: { open: boolean; onClose: () => void
           <button
             type="submit"
             disabled={!name.trim()}
-            className="rounded-xl bg-current px-4 py-2 text-sm font-medium text-[var(--stuff-bg)] disabled:opacity-40"
+            className="rounded-xl bg-[var(--stuff-fg)] px-4 py-2 text-sm font-medium text-[var(--stuff-bg)] disabled:opacity-40"
           >
             Add to Inbox
           </button>
