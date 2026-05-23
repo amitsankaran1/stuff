@@ -1,3 +1,6 @@
+'use client';
+
+import { type MouseEvent } from 'react';
 import type { Task } from '@stuff/shared';
 import clsx from 'clsx';
 
@@ -8,34 +11,55 @@ function formatDate(iso: string | null): string | null {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-export function TaskRow({ task }: { task: Task }) {
+interface Props {
+  task: Task;
+  onSelect: (task: Task) => void;
+  onToggleComplete: (task: Task) => void;
+}
+
+export function TaskRow({ task, onSelect, onToggleComplete }: Props) {
   const done = task.status === 'Done' || task.status === 'Cancelled';
   const when = formatDate(task.when);
   const deadline = formatDate(task.deadline);
   const agentRecent =
-    task.agentTouchedAt && Date.now() - new Date(task.agentTouchedAt).getTime() < 24 * 60 * 60 * 1000;
+    task.agentTouchedAt &&
+    Date.now() - new Date(task.agentTouchedAt).getTime() < 24 * 60 * 60 * 1000;
+
+  function handleToggle(e: MouseEvent) {
+    e.stopPropagation();
+    onToggleComplete(task);
+  }
 
   return (
     <li
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(task)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onSelect(task);
+      }}
       className={clsx(
-        'flex items-start gap-3 border-b border-[var(--stuff-border)] px-4 py-3',
+        'flex items-start gap-3 border-b border-[var(--stuff-border)] px-4 py-3 active:bg-black/5 dark:active:bg-white/5',
         done && 'opacity-50',
       )}
     >
-      <span
+      <button
+        type="button"
+        aria-label={done ? 'Mark as not done' : 'Mark as done'}
+        onClick={handleToggle}
         className={clsx(
-          'mt-1 size-4 shrink-0 rounded-full border',
-          done
-            ? 'border-current bg-current'
-            : 'border-[var(--stuff-border)]',
+          'mt-0.5 size-5 shrink-0 rounded-full border transition-colors',
+          done ? 'border-current bg-current' : 'border-[var(--stuff-border)] hover:border-current',
         )}
-        aria-hidden
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-baseline gap-2">
           <span className={clsx('truncate text-[15px]', done && 'line-through')}>{task.name}</span>
           {agentRecent ? (
-            <span className="size-1.5 shrink-0 rounded-full bg-pink-500" title="Touched by an agent" />
+            <span
+              className="size-1.5 shrink-0 rounded-full bg-pink-500"
+              title="Touched by an agent"
+            />
           ) : null}
         </div>
         {(when || deadline || task.tags.length > 0) && (
