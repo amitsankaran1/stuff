@@ -27,7 +27,7 @@ pnpm dev
 
 ## Milestones
 
-- **M0** — schema + seed (you are here)
+- **M0** — schema (you are here)
 - **M1** — read-only PWA + auth
 - **M2** — write/edit
 - **M3** — notifications + Vercel Cron

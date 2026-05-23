@@ -13,7 +13,6 @@
   },
   "scripts": {
     "init": "tsx src/scripts/init.ts",
-    "migrate": "tsx src/scripts/migrate.ts",
     "typecheck": "tsc --noEmit",
     "lint": "echo \"(no lint configured yet)\""
   },

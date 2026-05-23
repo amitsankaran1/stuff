@@ -1,5 +1,12 @@
-import 'dotenv/config';
+import { config as loadEnv } from 'dotenv';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { createStuffNotionClient } from '../client.js';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const root = resolve(here, '../../../..');
+loadEnv({ path: resolve(root, '.env.local') });
+loadEnv({ path: resolve(root, '.env') });
 import {
   DB_TITLES,
   areasProperties,
