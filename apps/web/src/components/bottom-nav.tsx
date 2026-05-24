@@ -11,6 +11,8 @@ const ITEMS = [
   { href: '/anytime', label: 'Anytime' },
   { href: '/someday', label: 'Someday' },
   { href: '/logbook', label: 'Logbook' },
+  { href: '/projects', label: 'Projects' },
+  { href: '/areas', label: 'Areas' },
 ] as const;
 
 export function BottomNav() {
@@ -21,7 +23,7 @@ export function BottomNav() {
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
     >
       {ITEMS.map((item) => {
-        const active = pathname === item.href;
+        const active = pathname === item.href || pathname.startsWith(item.href + '/');
         return (
           <Link
             key={item.href}
