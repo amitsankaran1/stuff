@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { AuthError } from 'next-auth';
 import { signIn, auth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -18,10 +19,19 @@ export default async function LoginPage({
   async function signInAction(formData: FormData) {
     'use server';
     const passphrase = formData.get('passphrase');
-    await signIn('credentials', {
-      passphrase,
-      redirectTo: next,
-    });
+    try {
+      await signIn('credentials', { passphrase, redirectTo: next });
+    } catch (err) {
+      // signIn throws NEXT_REDIRECT on success — let that bubble. Only catch
+      // AuthError (e.g. CredentialsSignin) and bounce back to /login with a
+      // flag so the form can show a "wrong passphrase" message.
+      if (err instanceof AuthError) {
+        const params = new URLSearchParams({ error: '1' });
+        if (next !== '/inbox') params.set('next', next);
+        redirect(`/login?${params.toString()}`);
+      }
+      throw err;
+    }
   }
 
   return (
