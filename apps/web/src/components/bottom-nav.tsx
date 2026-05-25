@@ -13,6 +13,7 @@ const ITEMS = [
   { href: '/logbook', label: 'Logbook' },
   { href: '/projects', label: 'Projects' },
   { href: '/areas', label: 'Areas' },
+  { href: '/settings', label: 'Settings' },
 ] as const;
 
 export function BottomNav() {

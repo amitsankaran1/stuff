@@ -37,6 +37,19 @@ export const projectsProperties = (areasDbId: string): DbProps => ({
   Notes: { rich_text: {} },
 });
 
+export const devicesProperties: DbProps = {
+  // Title is the human-readable device label (user agent fragment, etc.). The
+  // canonical identifier is the Device ID property below — we keep it in its
+  // own field so we can filter and dedupe by it.
+  Name: { title: {} },
+  'Device ID': { rich_text: {} },
+  Endpoint: { url: {} },
+  'Key P256dh': { rich_text: {} },
+  'Key Auth': { rich_text: {} },
+  'User Agent': { rich_text: {} },
+  'Last Seen At': { date: {} },
+};
+
 export const tasksProperties = (areasDbId: string, projectsDbId: string): DbProps => ({
   Name: { title: {} },
   Status: { select: { options: STATUS_OPTIONS } },
@@ -60,4 +73,5 @@ export const DB_TITLES = {
   areas: 'Stuff Areas',
   projects: 'Stuff Projects',
   tasks: 'Stuff Tasks',
+  devices: 'Stuff Devices',
 } as const;

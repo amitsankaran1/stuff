@@ -10,6 +10,7 @@ loadEnv({ path: resolve(root, '.env') });
 import {
   DB_TITLES,
   areasProperties,
+  devicesProperties,
   projectsProperties,
   tasksProperties,
 } from '../schema';
@@ -62,11 +63,13 @@ async function main() {
   const areasId = await ensureDatabase(DB_TITLES.areas, areasProperties);
   const projectsId = await ensureDatabase(DB_TITLES.projects, projectsProperties(areasId));
   const tasksId = await ensureDatabase(DB_TITLES.tasks, tasksProperties(areasId, projectsId));
+  const devicesId = await ensureDatabase(DB_TITLES.devices, devicesProperties);
 
   console.log('\nSet these in your .env.local:');
   console.log(`NOTION_AREAS_DB_ID=${areasId}`);
   console.log(`NOTION_PROJECTS_DB_ID=${projectsId}`);
   console.log(`NOTION_TASKS_DB_ID=${tasksId}`);
+  console.log(`NOTION_DEVICES_DB_ID=${devicesId}`);
 }
 
 main().catch((err) => {

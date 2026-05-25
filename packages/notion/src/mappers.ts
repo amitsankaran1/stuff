@@ -1,5 +1,5 @@
 import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoints.js';
-import type { Area, Project, Task, TaskSource, TaskStatus } from '@stuff/shared';
+import type { Area, Device, Project, Task, TaskSource, TaskStatus } from '@stuff/shared';
 
 type Props = PageObjectResponse['properties'];
 
@@ -26,6 +26,11 @@ const multiSelectNames = (p: Props[string] | undefined): string[] => {
 const dateStart = (p: Props[string] | undefined): string | null => {
   if (!p || p.type !== 'date' || !p.date) return null;
   return p.date.start;
+};
+
+const url = (p: Props[string] | undefined): string | null => {
+  if (!p || p.type !== 'url') return null;
+  return p.url ?? null;
 };
 
 const relationFirst = (p: Props[string] | undefined): string | null => {
@@ -74,6 +79,25 @@ export function mapProject(page: PageObjectResponse): Project {
     areaId: relationFirst(p['Area']),
     deadline: dateStart(p['Deadline']),
     notes: richText(p['Notes']),
+    createdAt: page.created_time,
+    updatedAt: page.last_edited_time,
+  };
+}
+
+export function mapDevice(page: PageObjectResponse): Device {
+  const p = page.properties;
+  const lastSeenRaw = dateStart(p['Last Seen At']);
+  return {
+    id: page.id,
+    deviceId: richText(p['Device ID']),
+    label: title(p['Name']),
+    endpoint: url(p['Endpoint']) ?? '',
+    keys: {
+      p256dh: richText(p['Key P256dh']),
+      auth: richText(p['Key Auth']),
+    },
+    userAgent: richText(p['User Agent']) || null,
+    lastSeenAt: lastSeenRaw ? new Date(lastSeenRaw).toISOString() : null,
     createdAt: page.created_time,
     updatedAt: page.last_edited_time,
   };
