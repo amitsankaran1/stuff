@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
   // next occurrence after completion and spawn a Scheduled copy.
   const candidates = await queryAll({
     and: [
-      { property: 'Status', select: { equals: 'Done' } },
+      { property: 'Status', status: { equals: 'Done' } },
       { property: 'Recurrence', rich_text: { is_not_empty: true } },
     ],
   });
