@@ -66,6 +66,41 @@ export type TaskCreate = z.infer<typeof TaskCreate>;
 export const TaskUpdate = Task.partial().required({ id: true });
 export type TaskUpdate = z.infer<typeof TaskUpdate>;
 
+/**
+ * Agent-facing create. Source is forced to "Agent" by the server; agents
+ * cannot stuff things straight into Today/Done. We accept the same fields as
+ * TaskCreate but the server overrides status to "Inbox" and source to "Agent".
+ */
+export const AgentTaskCreate = z.object({
+  name: z.string().min(1),
+  agentNotes: z.string().min(1),
+  tags: z.array(z.string()).default([]),
+  projectId: z.string().nullable().default(null),
+  areaId: z.string().nullable().default(null),
+  deadline: Task.shape.deadline,
+  when: Task.shape.when,
+  externalId: z.string().nullable().default(null),
+});
+export type AgentTaskCreate = z.infer<typeof AgentTaskCreate>;
+
+/**
+ * Agent-facing update. Agents cannot directly change `status` — they propose
+ * via `proposedStatus`, which the user confirms in the app. Free-form fields
+ * agents can update on their own: agentNotes, tags, deadline.
+ */
+export const AgentTaskUpdate = z.object({
+  proposedStatus: TaskStatus.nullable().optional(),
+  agentNotes: z.string().nullable().optional(),
+  tags: z.array(z.string()).optional(),
+  deadline: Task.shape.deadline.optional(),
+});
+export type AgentTaskUpdate = z.infer<typeof AgentTaskUpdate>;
+
+export const AgentAction = z.object({
+  action: z.enum(['confirm', 'reject']),
+});
+export type AgentAction = z.infer<typeof AgentAction>;
+
 export const Project = z.object({
   id: z.string(),
   name: z.string().min(1),

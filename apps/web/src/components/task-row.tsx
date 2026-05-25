@@ -1,6 +1,5 @@
 'use client';
 
-import { type MouseEvent } from 'react';
 import type { Task } from '@stuff/shared';
 import clsx from 'clsx';
 
@@ -25,40 +24,34 @@ export function TaskRow({ task, onSelect, onToggleComplete }: Props) {
     task.agentTouchedAt &&
     Date.now() - new Date(task.agentTouchedAt).getTime() < 24 * 60 * 60 * 1000;
 
-  function handleToggle(e: MouseEvent) {
-    e.stopPropagation();
-    onToggleComplete(task);
-  }
-
   return (
     <li
-      role="button"
-      tabIndex={0}
-      onClick={() => onSelect(task)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') onSelect(task);
-      }}
       className={clsx(
-        'flex items-start gap-3 border-b border-[var(--stuff-border)] px-4 py-3 active:bg-black/5 dark:active:bg-white/5',
+        'flex items-start gap-3 border-b border-[var(--stuff-border)] px-4 py-3',
         done && 'opacity-50',
       )}
     >
       <button
         type="button"
-        aria-label={done ? 'Mark as not done' : 'Mark as done'}
-        onClick={handleToggle}
+        aria-label={done ? `Mark "${task.name}" as not done` : `Mark "${task.name}" as done`}
+        onClick={() => onToggleComplete(task)}
         className={clsx(
           'mt-0.5 size-5 shrink-0 rounded-full border transition-colors',
           done ? 'border-current bg-current' : 'border-[var(--stuff-border)] hover:border-current',
         )}
       />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <button
+        type="button"
+        aria-label={`Open task: ${task.name}`}
+        onClick={() => onSelect(task)}
+        className="flex min-w-0 flex-1 flex-col text-left active:bg-black/5 dark:active:bg-white/5"
+      >
         <div className="flex items-baseline gap-2">
           <span className={clsx('truncate text-[15px]', done && 'line-through')}>{task.name}</span>
           {agentRecent ? (
             <span
               className="size-1.5 shrink-0 rounded-full bg-pink-500"
-              title="Touched by an agent"
+              aria-label="Touched by an agent"
             />
           ) : null}
         </div>
@@ -76,7 +69,7 @@ export function TaskRow({ task, onSelect, onToggleComplete }: Props) {
             Agent proposes: {task.proposedStatus}
           </div>
         ) : null}
-      </div>
+      </button>
     </li>
   );
 }

@@ -138,6 +138,32 @@ export async function updateChecklistItem(
   return data.item;
 }
 
+export interface PendingAgentActionsResponse {
+  count: number;
+  tasks: Task[];
+}
+
+export async function fetchPendingAgentActions(): Promise<PendingAgentActionsResponse> {
+  const res = await fetch('/api/tasks/pending-agent-actions', { credentials: 'include' });
+  if (!res.ok) throw new Error(`fetchPendingAgentActions failed: ${res.status}`);
+  return (await res.json()) as PendingAgentActionsResponse;
+}
+
+export async function actOnAgentProposal(
+  taskId: string,
+  action: 'confirm' | 'reject',
+): Promise<Task> {
+  const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/agent-action`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  });
+  if (!res.ok) throw new Error(`actOnAgentProposal failed: ${res.status}`);
+  const data = (await res.json()) as { task: Task };
+  return data.task;
+}
+
 export async function deleteChecklistItem(taskId: string, itemId: string): Promise<void> {
   const res = await fetch(
     `/api/tasks/${encodeURIComponent(taskId)}/checklist/${encodeURIComponent(itemId)}`,
@@ -153,3 +179,4 @@ export const projectsQueryKey = () => ['projects'] as const;
 export const areasQueryKey = () => ['areas'] as const;
 export const projectQueryKey = (id: string) => ['project', id] as const;
 export const areaQueryKey = (id: string) => ['area', id] as const;
+export const pendingAgentActionsQueryKey = () => ['pending-agent-actions'] as const;
