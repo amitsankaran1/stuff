@@ -2,13 +2,15 @@ import type {
   CreatePageParameters,
   UpdatePageParameters,
 } from '@notionhq/client/build/src/api-endpoints.js';
-import type { TaskCreate, TaskUpdate } from '@stuff/shared';
+import type { DeviceRegistration, TaskCreate, TaskUpdate } from '@stuff/shared';
 
 type Props = NonNullable<UpdatePageParameters['properties']>;
 
 const titleProp = (text: string): Props[string] => ({
   title: [{ type: 'text', text: { content: text } }],
 });
+
+const urlProp = (value: string | null): Props[string] => ({ url: value });
 
 const richTextProp = (text: string | null): Props[string] =>
   text == null || text === ''
@@ -80,5 +82,35 @@ export function buildTaskCreatePayload(
   return {
     parent: { database_id: databaseId },
     properties: props as CreatePageParameters['properties'],
+  };
+}
+
+export function buildDeviceProperties(
+  input: DeviceRegistration,
+  lastSeenAt: string,
+): Props {
+  const label =
+    input.label?.trim() ||
+    input.userAgent?.slice(0, 64) ||
+    `Device ${input.deviceId.slice(0, 8)}`;
+  const props: Props = {};
+  props['Name'] = titleProp(label);
+  props['Device ID'] = richTextProp(input.deviceId);
+  props['Endpoint'] = urlProp(input.endpoint);
+  props['Key P256dh'] = richTextProp(input.keys.p256dh);
+  props['Key Auth'] = richTextProp(input.keys.auth);
+  props['User Agent'] = richTextProp(input.userAgent ?? null);
+  props['Last Seen At'] = dateProp(lastSeenAt);
+  return props;
+}
+
+export function buildDeviceCreatePayload(
+  databaseId: string,
+  input: DeviceRegistration,
+  lastSeenAt: string,
+): CreatePageParameters {
+  return {
+    parent: { database_id: databaseId },
+    properties: buildDeviceProperties(input, lastSeenAt) as CreatePageParameters['properties'],
   };
 }
