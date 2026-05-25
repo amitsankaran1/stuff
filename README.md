@@ -42,7 +42,8 @@ flowchart TB
         DBs[("Stuff Areas · Projects<br/>Tasks · Devices")]
     end
 
-    Cron[/"Vercel Cron<br/>reminders (5m) · digest (7am) · recurrence (nightly)"/]
+    GHA[/"GitHub Actions<br/>reminders every 5m"/]
+    VCron[/"Vercel Cron<br/>digest 7am · recurrence nightly"/]
 
     You -->|passphrase| Pages
     Pages --> UserAPI
@@ -53,7 +54,8 @@ flowchart TB
     Agents -->|draft · propose status| AgentAPI
     AgentAPI --> DBs
 
-    Cron --> CronAPI
+    GHA --> CronAPI
+    VCron --> CronAPI
     CronAPI --> DBs
     CronAPI -->|web-push| SW
     SW -->|notification| You
@@ -72,7 +74,7 @@ flowchart TB
 
 - **You — session cookie.** Sign in with `AUTH_PASSPHRASE`. All `/api/tasks`, `/api/projects`, `/api/areas` calls and the Settings page use this.
 - **Agents — `AGENT_TOKEN` bearer.** `/api/agent/*` lets custom agents draft tasks (server forces `Status="Inbox"`, `Source="Agent"`, stamps `Agent Touched At`) and *propose* status changes via `Proposed Status`. Agents **never** write `Status` directly. A banner in the app surfaces every proposal with Confirm / Reject.
-- **Cron — `CRON_SECRET` bearer.** Vercel Cron pings three `/api/cron/*` routes: `reminders` (every 5 min — start-time + deadline warnings, idempotent via `Last Reminded At`), `morning-digest` (daily, summarises Today/Inbox/overdue counts in `USER_TZ`), and `recurrence` (nightly — spawns the next occurrence of recurring Done tasks, deduped via `External ID = recurrence:<parentId>:<date>`).
+- **Cron — `CRON_SECRET` bearer.** Two schedulers pinging three `/api/cron/*` routes. **GitHub Actions** runs `reminders` every 5 min (Vercel Hobby caps cron at daily, so the sub-daily one lives in `.github/workflows/reminders.yml`; start-time + deadline warnings, idempotent via `Last Reminded At`). **Vercel Cron** runs the daily two: `morning-digest` (Today/Inbox/overdue counts in `USER_TZ`) and `recurrence` (spawns the next occurrence of recurring Done tasks, deduped via `External ID = recurrence:<parentId>:<date>`). See `docs/scheduling.md` for setup.
 
 ### Push pipeline
 
