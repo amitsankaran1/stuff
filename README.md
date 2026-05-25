@@ -19,7 +19,7 @@ docs/         Productivity guide, ADRs
 
 ## Architecture
 
-Notion holds the data; Stuff is the thin, fast surface over it. Three different writers (you, agents, cron) hit the same four databases, each with its own auth.
+Notion holds the data; Stuff is the thin, fast surface over it. Three different writers (you, agents, scheduled jobs) hit the same four databases, each with its own auth.
 
 ```mermaid
 flowchart TB
