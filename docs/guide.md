@@ -42,6 +42,45 @@ Custom agents read and write the same `Stuff Tasks` DB. When you delegate to an 
 
 Patterns to avoid: don't let agents auto-create recurring tasks; don't let them edit `When` for tasks the user has already scheduled.
 
+### Agent API
+
+Agents authenticate with `Authorization: Bearer ${AGENT_TOKEN}`. Generate the token with `openssl rand -hex 32` and set it in your Vercel project env. Do not reuse `CRON_SECRET` — keep the two surfaces separately revocable.
+
+| Endpoint | Method | What it does |
+|---|---|---|
+| `/api/agent/tasks?view=inbox\|today\|upcoming\|anytime\|someday\|logbook` | GET | List tasks for a view. Same filters as the UI. |
+| `/api/agent/tasks` | POST | Create a task. Server forces `status="Inbox"`, `source="Agent"`, and stamps `agentTouchedAt`. `agentNotes` is required. |
+| `/api/agent/tasks/[id]` | GET | Fetch one task. |
+| `/api/agent/tasks/[id]` | PATCH | Update a task. **Only** these fields are accepted: `proposedStatus`, `agentNotes`, `tags`, `deadline`. To change status, set `proposedStatus` — never `status`. |
+| `/api/agent/projects` | GET | List projects (read-only). |
+| `/api/agent/areas` | GET | List areas (read-only). |
+
+The user-facing app polls `/api/tasks/pending-agent-actions` and renders a banner with Confirm / Reject buttons for every task that has a `proposedStatus` set. Confirm promotes `proposedStatus` → `status` (stamping `completedAt` if it becomes `Done`); Reject just clears `proposedStatus`.
+
+**Example — draft a task:**
+
+```bash
+curl -X POST $URL/api/agent/tasks \
+  -H "Authorization: Bearer $AGENT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Renew passport",
+    "agentNotes": "Saw renewal reminder in inbox email",
+    "deadline": "2026-08-01"
+  }'
+```
+
+**Example — propose marking a task done:**
+
+```bash
+curl -X PATCH $URL/api/agent/tasks/$TASK_ID \
+  -H "Authorization: Bearer $AGENT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "proposedStatus": "Done", "agentNotes": "Saw shipping confirmation" }'
+```
+
+The user will see a Confirm / Reject banner next time they open the app.
+
 ## 6. When to use Notion web vs. Stuff
 
 - **Stuff**: capture, triage, daily/weekly review, execution. Anything one-handed on the phone.

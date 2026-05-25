@@ -27,11 +27,11 @@ pnpm dev
 
 ## Milestones
 
-- **M0** — schema (you are here)
-- **M1** — read-only PWA + auth
-- **M2** — write/edit
-- **M3** — notifications + Vercel Cron
-- **M4** — agent integration
+- **M0** — schema ✅
+- **M1** — read-only PWA + auth ✅
+- **M2** — write/edit ✅
+- **M3** — notifications + Vercel Cron ✅
+- **M4** — agent integration ✅ (you are here)
 - **M5** — native SwiftUI (later)
 
 See [the plan](https://github.com/amitsankaran1/stuff) for full architecture.
