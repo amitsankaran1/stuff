@@ -22,7 +22,7 @@ export function filterForView(view: ViewKey): { filter: Filter; sorts: Sort[] } 
   switch (view) {
     case 'inbox':
       return {
-        filter: { property: 'Status', select: { equals: 'Inbox' } },
+        filter: { property: 'Status', status: { equals: 'Inbox' } },
         sorts: [{ timestamp: 'created_time', direction: 'descending' }],
       };
 
@@ -30,11 +30,11 @@ export function filterForView(view: ViewKey): { filter: Filter; sorts: Sort[] } 
       return {
         filter: {
           and: [
-            { property: 'Status', select: { does_not_equal: 'Done' } },
-            { property: 'Status', select: { does_not_equal: 'Cancelled' } },
+            { property: 'Status', status: { does_not_equal: 'Done' } },
+            { property: 'Status', status: { does_not_equal: 'Cancelled' } },
             {
               or: [
-                { property: 'Status', select: { equals: 'Today' } },
+                { property: 'Status', status: { equals: 'Today' } },
                 { property: 'When', date: { on_or_before: today } },
               ],
             },
@@ -48,8 +48,8 @@ export function filterForView(view: ViewKey): { filter: Filter; sorts: Sort[] } 
         filter: {
           and: [
             { property: 'When', date: { after: today } },
-            { property: 'Status', select: { does_not_equal: 'Done' } },
-            { property: 'Status', select: { does_not_equal: 'Cancelled' } },
+            { property: 'Status', status: { does_not_equal: 'Done' } },
+            { property: 'Status', status: { does_not_equal: 'Cancelled' } },
           ],
         },
         sorts: [{ property: 'When', direction: 'ascending' }],
@@ -57,13 +57,13 @@ export function filterForView(view: ViewKey): { filter: Filter; sorts: Sort[] } 
 
     case 'anytime':
       return {
-        filter: { property: 'Status', select: { equals: 'Anytime' } },
+        filter: { property: 'Status', status: { equals: 'Anytime' } },
         sorts: [{ timestamp: 'created_time', direction: 'descending' }],
       };
 
     case 'someday':
       return {
-        filter: { property: 'Status', select: { equals: 'Someday' } },
+        filter: { property: 'Status', status: { equals: 'Someday' } },
         sorts: [{ timestamp: 'created_time', direction: 'descending' }],
       };
 
@@ -71,8 +71,8 @@ export function filterForView(view: ViewKey): { filter: Filter; sorts: Sort[] } 
       return {
         filter: {
           or: [
-            { property: 'Status', select: { equals: 'Done' } },
-            { property: 'Status', select: { equals: 'Cancelled' } },
+            { property: 'Status', status: { equals: 'Done' } },
+            { property: 'Status', status: { equals: 'Cancelled' } },
           ],
         },
         sorts: [{ property: 'Completed At', direction: 'descending' }],

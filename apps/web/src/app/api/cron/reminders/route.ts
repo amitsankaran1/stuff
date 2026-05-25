@@ -53,8 +53,8 @@ export async function GET(req: NextRequest) {
   const startCandidates = await queryAll({
     and: [
       { property: 'When', date: { on_or_before: nowIso } },
-      { property: 'Status', select: { does_not_equal: 'Done' } },
-      { property: 'Status', select: { does_not_equal: 'Cancelled' } },
+      { property: 'Status', status: { does_not_equal: 'Done' } },
+      { property: 'Status', status: { does_not_equal: 'Cancelled' } },
     ],
   });
 
@@ -63,8 +63,8 @@ export async function GET(req: NextRequest) {
     and: [
       { property: 'Deadline', date: { on_or_before: deadlineCutoffDate } },
       { property: 'Deadline', date: { on_or_after: isoDateOnly(now) } },
-      { property: 'Status', select: { does_not_equal: 'Done' } },
-      { property: 'Status', select: { does_not_equal: 'Cancelled' } },
+      { property: 'Status', status: { does_not_equal: 'Done' } },
+      { property: 'Status', status: { does_not_equal: 'Cancelled' } },
     ],
   });
 

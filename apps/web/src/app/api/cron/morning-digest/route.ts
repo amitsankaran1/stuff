@@ -55,22 +55,22 @@ export async function GET(req: NextRequest) {
   const [todayTasks, inboxTasks, overdue] = await Promise.all([
     queryAll({
       and: [
-        { property: 'Status', select: { does_not_equal: 'Done' } },
-        { property: 'Status', select: { does_not_equal: 'Cancelled' } },
+        { property: 'Status', status: { does_not_equal: 'Done' } },
+        { property: 'Status', status: { does_not_equal: 'Cancelled' } },
         {
           or: [
-            { property: 'Status', select: { equals: 'Today' } },
+            { property: 'Status', status: { equals: 'Today' } },
             { property: 'When', date: { on_or_before: today } },
           ],
         },
       ],
     }),
-    queryAll({ property: 'Status', select: { equals: 'Inbox' } }),
+    queryAll({ property: 'Status', status: { equals: 'Inbox' } }),
     queryAll({
       and: [
         { property: 'Deadline', date: { before: today } },
-        { property: 'Status', select: { does_not_equal: 'Done' } },
-        { property: 'Status', select: { does_not_equal: 'Cancelled' } },
+        { property: 'Status', status: { does_not_equal: 'Done' } },
+        { property: 'Status', status: { does_not_equal: 'Cancelled' } },
       ],
     }),
   ]);

@@ -20,6 +20,13 @@ const richTextProp = (text: string | null): Props[string] =>
 const selectProp = (name: string | null): Props[string] =>
   name == null ? { select: null } : { select: { name } };
 
+// `Status` is a Notion `status` property (not `select`). Notion's API rejects
+// a select-shaped payload for status properties (and vice versa), so we
+// build the right shape per property. `Source` and `Proposed Status` remain
+// regular selects (Notion only allows one status property per database).
+const statusProp = (name: string | null): Props[string] =>
+  name == null ? { status: null } : { status: { name } };
+
 const dateProp = (iso: string | null): Props[string] =>
   iso == null ? { date: null } : { date: { start: iso } };
 
@@ -37,7 +44,7 @@ const multiSelectProp = (names: string[]): Props[string] => ({
 export function buildTaskUpdateProperties(input: Partial<TaskUpdate>): Props {
   const props: Props = {};
   if (input.name !== undefined) props['Name'] = titleProp(input.name);
-  if (input.status !== undefined) props['Status'] = selectProp(input.status);
+  if (input.status !== undefined) props['Status'] = statusProp(input.status);
   if (input.when !== undefined) props['When'] = dateProp(input.when);
   if (input.deadline !== undefined) props['Deadline'] = dateProp(input.deadline);
   if (input.projectId !== undefined) props['Project'] = relationProp(input.projectId);

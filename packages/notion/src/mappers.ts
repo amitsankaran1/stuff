@@ -13,9 +13,14 @@ const title = (p: Props[string] | undefined): string => {
   return p.title.map((r) => r.plain_text).join('');
 };
 
+// Reads both `select` and `status` property values. Notion distinguishes the
+// two types, and a "Status" column may have been converted from select to
+// status (Notion auto-suggests this for columns named "Status").
 const selectName = <T extends string>(p: Props[string] | undefined): T | null => {
-  if (!p || p.type !== 'select' || !p.select) return null;
-  return p.select.name as T;
+  if (!p) return null;
+  if (p.type === 'select') return (p.select?.name ?? null) as T | null;
+  if (p.type === 'status') return (p.status?.name ?? null) as T | null;
+  return null;
 };
 
 const multiSelectNames = (p: Props[string] | undefined): string[] => {
