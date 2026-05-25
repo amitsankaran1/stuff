@@ -27,6 +27,9 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
 
   return (
     <div
+      // `inert` removes the subtree from the a11y tree and tab order
+      // even while we keep it mounted for the slide-out animation.
+      inert={!open}
       aria-hidden={!open}
       className={clsx(
         'fixed inset-0 z-50 flex items-end justify-center transition-opacity',

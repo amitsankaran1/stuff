@@ -37,3 +37,7 @@ coverage
 apps/web/public/sw.js
 apps/web/public/sw.js.map
 apps/web/public/workbox-*.js
+
+# playwright mcp artifacts (test runs)
+.playwright-mcp/
+/stuff-*.png
