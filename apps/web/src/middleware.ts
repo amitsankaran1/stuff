@@ -16,6 +16,12 @@ export default auth((req) => {
 });
 
 export const config = {
-  // Skip Next internals, static assets, and the auth API itself.
-  matcher: ['/((?!api/auth|_next/static|_next/image|icon-.*|manifest.webmanifest|favicon.ico).*)'],
+  // Skip:
+  // - api/auth         — Auth.js callbacks
+  // - api/cron         — Bearer CRON_SECRET, checks itself
+  // - api/agent        — Bearer AGENT_TOKEN, checks itself
+  // - Next internals + static assets
+  matcher: [
+    '/((?!api/auth|api/cron|api/agent|_next/static|_next/image|icon-.*|manifest.webmanifest|favicon.ico).*)',
+  ],
 };
