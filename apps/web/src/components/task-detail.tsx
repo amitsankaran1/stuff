@@ -14,6 +14,17 @@ import { Sheet } from './sheet';
 import { Picker } from './picker';
 import { ChecklistEditor } from './checklist-editor';
 
+/**
+ * Convert a UTC ISO timestamp to the local "YYYY-MM-DDTHH:mm" form that a
+ * datetime-local input expects. Slicing the ISO string directly would show
+ * UTC wall-clock time and shift the task on every save round-trip.
+ */
+function toDatetimeLocal(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const STATUS_OPTIONS: TaskStatus[] = [
   'Inbox',
   'Today',
@@ -58,7 +69,7 @@ export function TaskDetailSheet({ task, onClose }: Props) {
     if (!task) return;
     setName(task.name);
     setStatus(task.status);
-    setWhen(task.when ? task.when.slice(0, 16) : '');
+    setWhen(task.when ? toDatetimeLocal(task.when) : '');
     setDeadline(task.deadline ?? '');
     setProjectId(task.projectId);
     setAreaId(task.areaId);
