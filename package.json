@@ -1,24 +1,13 @@
 {
   "name": "stuff",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "A fast, Notion-backed task manager. Things-style methodology, agent-friendly.",
-  "packageManager": "pnpm@11.2.2",
+  "description": "Todoist as the front-end for a Notion tasks database, synced two-way by a Notion Worker.",
   "engines": {
     "node": ">=22.0.0"
   },
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
-    "lint": "turbo run lint",
-    "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
-    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\""
-  },
-  "devDependencies": {
-    "prettier": "^3.4.2",
-    "turbo": "^2.4.0",
-    "typescript": "^5.7.3"
+    "check": "npm --prefix apps/sync-worker run check",
+    "build": "npm --prefix apps/sync-worker run build"
   }
 }
