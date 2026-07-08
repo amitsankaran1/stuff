@@ -131,7 +131,15 @@ export function todoistUpdateFor(
 	const name = page.name.trim();
 	if (name && name !== task.content.trim()) update.content = name;
 	if (page.notes !== (task.description ?? "")) update.description = page.notes;
-	if (!sameDate(page.when, task.due?.date ?? null)) update.dueDate = page.when;
+	// Never push dates onto a recurring task: updating `due_date` clears
+	// Todoist's recurrence rule (verified). The rule lives in Todoist;
+	// inbound sync re-asserts Todoist's date onto the page instead.
+	if (
+		!task.due?.is_recurring &&
+		!sameDate(page.when, task.due?.date ?? null)
+	) {
+		update.dueDate = page.when;
+	}
 
 	return Object.keys(update).length > 0 ? update : null;
 }
