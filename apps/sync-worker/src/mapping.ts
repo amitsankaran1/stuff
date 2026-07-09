@@ -8,7 +8,12 @@
  * checked ↔ Status (Done). Deletion in Todoist maps to Status Cancelled.
  */
 
-import { STATUS, openStatusFor } from "./config.js";
+import {
+	STATUS,
+	notionPriorityFor,
+	openStatusFor,
+	todoistPriorityFor,
+} from "./config.js";
 import type { ParsedTask, TaskFields } from "./notion-tasks.js";
 import type { TodoistTask, TodoistTaskFields } from "./todoist.js";
 
@@ -63,12 +68,21 @@ export function notionDateFromDue(
 // Todoist → Notion
 // ---------------------------------------------------------------------------
 
+/** Compare two label sets order-insensitively. */
+function sameLabels(a: string[], b: string[]): boolean {
+	if (a.length !== b.length) return false;
+	const set = new Set(a);
+	return b.every((label) => set.has(label));
+}
+
 /** The Notion field values a Todoist task implies (content fields only). */
 export function todoistToNotionFields(task: TodoistTask): TaskFields {
 	return {
 		name: task.content,
 		when: notionDateFromDue(task.due),
 		notes: task.description ?? "",
+		priority: notionPriorityFor(task.priority),
+		labels: task.labels,
 	};
 }
 
@@ -88,6 +102,12 @@ export function notionUpdateFor(
 	}
 	if (!sameDate(task.due?.date ?? null, page.when)) update.when = target.when;
 	if ((target.notes ?? "") !== page.notes) update.notes = target.notes;
+	if ((target.priority ?? null) !== page.priority) {
+		update.priority = target.priority;
+	}
+	if (!sameLabels(target.labels ?? [], page.labels)) {
+		update.labels = target.labels;
+	}
 
 	// Completion state: either side saying "done" must land in Notion,
 	// but reopens only pull a page back from Done (never from Cancelled —
@@ -96,6 +116,12 @@ export function notionUpdateFor(
 		update.status = STATUS.done;
 	} else if (!task.checked && page.status === STATUS.done) {
 		update.status = openStatusFor(Boolean(task.due));
+	} else if (!task.checked && page.status === STATUS.inbox && task.due) {
+		// A task sitting in Inbox that gains a due in Todoist must move to
+		// Upcoming: the DB automation "Status = Inbox → Clear Date" would
+		// otherwise wipe the date we just wrote. Other open states
+		// (Anytime/Someday/Today) are deliberate and left untouched.
+		update.status = STATUS.upcoming;
 	}
 
 	return Object.keys(update).length > 0 ? update : null;
@@ -115,6 +141,8 @@ export function notionToTodoistFields(page: ParsedTask): TodoistTaskFields {
 		content: page.name,
 		description: page.notes,
 		dueDate: page.when,
+		priority: todoistPriorityFor(page.priority),
+		labels: page.labels,
 	};
 }
 
@@ -131,6 +159,9 @@ export function todoistUpdateFor(
 	const name = page.name.trim();
 	if (name && name !== task.content.trim()) update.content = name;
 	if (page.notes !== (task.description ?? "")) update.description = page.notes;
+	const priority = todoistPriorityFor(page.priority);
+	if (priority !== task.priority) update.priority = priority;
+	if (!sameLabels(page.labels, task.labels)) update.labels = page.labels;
 	// Never push dates onto a recurring task: updating `due_date` clears
 	// Todoist's recurrence rule (verified). The rule lives in Todoist;
 	// inbound sync re-asserts Todoist's date onto the page instead.

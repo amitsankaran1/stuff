@@ -5,7 +5,8 @@
  * If the database schema changes, this is the only file to update.
  * Live schema (data source db47677d-7c3d-4d37-b87b-f6fcde061f3d):
  * Task (title), Status (status), Date (date), Notes (rich_text),
- * External ID (rich_text), Assignee (people).
+ * External ID (rich_text), Assignee (people), Priority (select),
+ * Labels (multi_select).
  */
 
 export function env(name: string): string {
@@ -23,7 +24,41 @@ export const PROP = {
 	when: "Date",
 	notes: "Notes",
 	externalId: "External ID",
+	priority: "Priority",
+	labels: "Labels",
 } as const;
+
+/**
+ * Priority mapping. Todoist uses ints 1–4 where 1 is the default "no
+ * priority" and 4 is urgent (P1 in the UI); Notion uses a select whose
+ * options are P1–P3. Todoist's default (1) maps to no Notion selection.
+ */
+export function notionPriorityFor(todoistPriority: number): string | null {
+	switch (todoistPriority) {
+		case 4:
+			return "P1";
+		case 3:
+			return "P2";
+		case 2:
+			return "P3";
+		default:
+			return null;
+	}
+}
+
+/** Inverse of {@link notionPriorityFor}; a blank Notion priority is 1. */
+export function todoistPriorityFor(notionPriority: string | null): number {
+	switch (notionPriority) {
+		case "P1":
+			return 4;
+		case "P2":
+			return 3;
+		case "P3":
+			return 2;
+		default:
+			return 1;
+	}
+}
 
 /**
  * Status option names in the Personal Tasks database.
