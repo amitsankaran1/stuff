@@ -14,6 +14,8 @@ export interface ParsedTask {
 	when: string | null;
 	notes: string;
 	externalId: string | null;
+	priority: string | null;
+	labels: string[];
 	lastEditedTime: string;
 	lastEditedBy: string | null;
 }
@@ -26,6 +28,9 @@ export interface TaskFields {
 	when?: { start: string; timeZone?: string } | null;
 	notes?: string;
 	externalId?: string;
+	/** Select option name; null clears the selection. */
+	priority?: string | null;
+	labels?: string[];
 }
 
 export function isClosedStatus(status: string | null): boolean {
@@ -51,6 +56,10 @@ export function parseTask(page: any): ParsedTask {
 		when: props[PROP.when]?.date?.start ?? null,
 		notes: plainText(props[PROP.notes]?.rich_text),
 		externalId: plainText(props[PROP.externalId]?.rich_text) || null,
+		priority: props[PROP.priority]?.select?.name ?? null,
+		labels: (props[PROP.labels]?.multi_select ?? []).map(
+			(option: { name: string }) => option.name,
+		),
 		lastEditedTime: page.last_edited_time as string,
 		lastEditedBy: page.last_edited_by?.id ?? null,
 	};
@@ -98,6 +107,16 @@ export function buildProps(fields: TaskFields): AnyProps {
 	if (fields.externalId !== undefined) {
 		props[PROP.externalId] = {
 			rich_text: [{ text: { content: fields.externalId } }],
+		};
+	}
+	if (fields.priority !== undefined) {
+		props[PROP.priority] = {
+			select: fields.priority ? { name: fields.priority } : null,
+		};
+	}
+	if (fields.labels !== undefined) {
+		props[PROP.labels] = {
+			multi_select: fields.labels.map((name) => ({ name })),
 		};
 	}
 	return props;

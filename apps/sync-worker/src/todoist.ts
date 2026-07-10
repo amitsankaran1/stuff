@@ -39,6 +39,10 @@ export interface TodoistTaskFields {
 	description?: string;
 	/** ISO date or datetime; null clears the due date. */
 	dueDate?: string | null;
+	/** 1 (none) .. 4 (urgent). */
+	priority?: number;
+	/** Full label set (names); replaces the task's labels. */
+	labels?: string[];
 }
 
 type Wait = () => Promise<void>;
@@ -57,6 +61,8 @@ function buildBody(fields: TodoistTaskFields): Record<string, unknown> {
 			body.due_date = fields.dueDate;
 		}
 	}
+	if (fields.priority !== undefined) body.priority = fields.priority;
+	if (fields.labels !== undefined) body.labels = fields.labels;
 	return body;
 }
 
