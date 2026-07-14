@@ -20,14 +20,19 @@ import { j } from "@notionhq/workers/schema-builder";
 import { Client } from "@notionhq/client";
 
 import {
-	STATUS,
+	type Board,
+	activeBoards,
+	boardForTodoistProject,
 	env,
 	excludedTodoistProjectIds,
-	openStatusFor,
+	taskBelongsToBoard,
+	todayLocal,
 	todoistExternalId,
 	todoistIdFromExternalId,
 } from "./config.js";
 import {
+	localDueDate,
+	localWhenDate,
 	notionUpdateFor,
 	notionToTodoistFields,
 	todoistToNotionFields,
@@ -36,6 +41,7 @@ import {
 import {
 	createTask as createNotionTask,
 	findByExternalId,
+	findByExternalIdAnyBoard,
 	findUnlinkedByName,
 	getBotUserId,
 	getTask as getNotionTask,
@@ -117,35 +123,40 @@ function verifyTodoistSignature(
 /** Create the Notion page for a Todoist task, or adopt/update a match. */
 async function upsertFromTodoist(
 	notion: Client,
+	board: Board,
 	task: TodoistTask,
 ): Promise<"created" | "updated" | "unchanged"> {
 	const externalId = todoistExternalId(task.id);
-	let page = await findByExternalId(notion, externalId);
+	let page = await findByExternalId(notion, board, externalId);
 
 	if (!page) {
 		// If our own outbound create raced this webhook, the page exists but
 		// its External ID write may not have landed yet — adopt by name.
-		const unlinked = await findUnlinkedByName(notion, task.content);
+		const unlinked = await findUnlinkedByName(notion, board, task.content);
 		if (unlinked) {
-			await updateNotionTask(notion, unlinked.pageId, { externalId });
+			await updateNotionTask(notion, board, unlinked.pageId, { externalId });
 			page = { ...unlinked, externalId };
 		}
 	}
 
 	if (!page) {
-		await createNotionTask(notion, {
+		await createNotionTask(notion, board, {
 			...todoistToNotionFields(task),
 			status: task.checked
-				? STATUS.done
-				: openStatusFor(Boolean(task.due)),
+				? board.status.done
+				: board.status.openFor(localDueDate(task.due)),
 			externalId,
+			// On a shared board, a task the user created in Todoist is theirs.
+			...(board.ownerFilter
+				? { owner: [board.ownerFilter.userId] }
+				: {}),
 		});
 		return "created";
 	}
 
-	const update = notionUpdateFor(task, page);
+	const update = notionUpdateFor(task, page, board);
 	if (update) {
-		await updateNotionTask(notion, page.pageId, update);
+		await updateNotionTask(notion, board, page.pageId, update);
 		return "updated";
 	}
 	return "unchanged";
@@ -180,20 +191,37 @@ worker.webhook("todoist", {
 						await new Promise((resolve) => setTimeout(resolve, 5000));
 					}
 					const live = await todoist.getTask(task.id);
-					const result = live
-						? await upsertFromTodoist(notion, live)
-						: "gone";
+					let result: string;
+					if (!live) {
+						result = "gone";
+					} else {
+						// Route by project, but if the task already exists in some
+						// board's database, update it there instead: moving a task
+						// between Todoist projects must not duplicate it across DBs.
+						const existing = await findByExternalIdAnyBoard(
+							notion,
+							activeBoards(),
+							todoistExternalId(live.id),
+						);
+						const board =
+							existing?.board ?? boardForTodoistProject(live.project_id);
+						result = await upsertFromTodoist(notion, board, live);
+					}
 					console.log(`${payload.event_name} ${task.id}: ${result}`);
 					break;
 				}
 				case "item:deleted": {
-					const page = await findByExternalId(
+					const existing = await findByExternalIdAnyBoard(
 						notion,
+						activeBoards(),
 						todoistExternalId(task.id),
 					);
-					if (page && !isClosedStatus(page.status)) {
-						await updateNotionTask(notion, page.pageId, {
-							status: STATUS.cancelled,
+					if (
+						existing &&
+						!isClosedStatus(existing.page.status, existing.board)
+					) {
+						await updateNotionTask(notion, existing.board, existing.page.pageId, {
+							status: existing.board.status.cancelled,
 						});
 						console.log(`item:deleted ${task.id}: cancelled`);
 					}
@@ -210,27 +238,98 @@ worker.webhook("todoist", {
 // Outbound: Notion automation → Todoist
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether a page belongs in the user's Todoist: true on boards with no owner
+ * filter, otherwise true when the page is unowned or owned by the filter user.
+ */
+function ownedByUser(page: ParsedTask, board: Board): boolean {
+	if (!board.ownerFilter) return true;
+	return (
+		page.owner.length === 0 || page.owner.includes(board.ownerFilter.userId)
+	);
+}
+
+/**
+ * Keep "Today" tasks pinned to today: if the page's status is the board's
+ * today-status and its Date isn't today, rewrite Date = today (which the
+ * normal Date→due sync then pushes to Todoist). Skipped for recurring tasks —
+ * their date is owned by Todoist's recurrence. Returns the page with its Date
+ * updated so callers push the corrected value.
+ */
+async function normalizeTodayDate(
+	notion: Client,
+	board: Board,
+	page: ParsedTask,
+	isRecurring: boolean,
+): Promise<ParsedTask> {
+	if (!board.status.today || page.status !== board.status.today) return page;
+	if (isRecurring) return page;
+	const today = todayLocal();
+	if (localWhenDate(page.when) === today) return page;
+	await updateNotionTask(notion, board, page.pageId, { when: { start: today } });
+	return { ...page, when: today };
+}
+
 /** Push one Notion page's state to Todoist (create, update, close, reopen). */
 async function pushPageToTodoist(
 	notion: Client,
+	board: Board,
 	page: ParsedTask,
 ): Promise<string> {
 	const todoistId = page.externalId
 		? todoistIdFromExternalId(page.externalId)
 		: null;
 
+	// On a shared board, only sync tasks the user owns (or that are unowned);
+	// tasks belonging solely to a collaborator stay out of the user's Todoist.
+	const mine = !board.ownerFilter || ownedByUser(page, board);
+
 	if (!todoistId) {
-		// Never linked. Only open tasks are worth creating in Todoist.
-		if (isClosedStatus(page.status) || !page.name) return "skipped";
-		const created = await todoist.createTask(notionToTodoistFields(page));
-		await updateNotionTask(notion, page.pageId, {
+		// Never linked. Only open, owned tasks are worth creating in Todoist.
+		if (isClosedStatus(page.status, board) || !page.name || !mine) {
+			return "skipped";
+		}
+		page = await normalizeTodayDate(notion, board, page, false);
+		const created = await todoist.createTask(notionToTodoistFields(page, board));
+		await updateNotionTask(notion, board, page.pageId, {
 			externalId: todoistExternalId(created.id),
 		});
 		return "created";
 	}
 
 	const task = await todoist.getTask(todoistId);
-	if (!task) return "missing-in-todoist";
+	if (!task) {
+		// The linked Todoist task is gone (deleted in Todoist). If the page is
+		// open and owned — e.g. moved from Cancelled back to an open status —
+		// revive it: create a fresh task and relink. A closed page has nothing
+		// worth recreating.
+		if (isClosedStatus(page.status, board) || !page.name || !mine) {
+			return "missing-in-todoist";
+		}
+		page = await normalizeTodayDate(notion, board, page, false);
+		const created = await todoist.createTask(notionToTodoistFields(page, board));
+		await updateNotionTask(notion, board, page.pageId, {
+			externalId: todoistExternalId(created.id),
+		});
+		return "recreated";
+	}
+
+	// A linked task the user no longer owns (reassigned to a collaborator)
+	// should leave the user's Todoist. Close rather than delete to keep history.
+	if (!mine) {
+		if (!task.checked) {
+			await todoist.closeTask(todoistId);
+			return "closed (not owner)";
+		}
+		return "skipped (not owner)";
+	}
+
+	page = await normalizeTodayDate(
+		notion,
+		board,
+		page,
+		Boolean(task.due?.is_recurring),
+	);
 
 	const actions: string[] = [];
 	const update = todoistUpdateFor(page, task);
@@ -239,7 +338,7 @@ async function pushPageToTodoist(
 		actions.push("updated");
 	}
 
-	const pageClosed = isClosedStatus(page.status);
+	const pageClosed = isClosedStatus(page.status, board);
 	if (pageClosed && !task.checked) {
 		await todoist.closeTask(todoistId);
 		actions.push("closed");
@@ -270,8 +369,10 @@ worker.webhook("notionPush", {
 				continue;
 			}
 			// Re-read the page: automation payloads can be stale by the
-			// time we run, and echoes must diff against current state.
-			const page = await getNotionTask(notion, pageId);
+			// time we run, and echoes must diff against current state. The
+			// board is resolved from the page's parent data source, so both
+			// databases' automations can target this one webhook.
+			const { page, board } = await getNotionTask(notion, pageId);
 			// Echo guard: if the last edit was made by this integration,
 			// the automation fired on our own inbound write — pushing it
 			// back out could clear fields mid-settle. Skip; the reconcile
@@ -280,7 +381,7 @@ worker.webhook("notionPush", {
 				console.log(`notionPush ${pageId}: skipped (own write echo)`);
 				continue;
 			}
-			const result = await pushPageToTodoist(notion, page);
+			const result = await pushPageToTodoist(notion, board, page);
 			console.log(`notionPush ${pageId}: ${result}`);
 		}
 	},
@@ -309,74 +410,119 @@ worker.tool("reconcile", {
 			closedInTodoist: 0,
 			completedInNotion: 0,
 			cancelledInNotion: 0,
+			rolledToday: 0,
 		};
 
 		const excluded = excludedTodoistProjectIds();
-		const [allActiveTasks, linkedPages, openPages] = await Promise.all([
-			todoist.listActiveTasks(),
-			listLinkedTasks(notion),
-			listOpenTasks(notion),
-		]);
+		const allActiveTasks = await todoist.listActiveTasks();
 		const activeTasks = allActiveTasks.filter(
 			(task) => !task.project_id || !excluded.has(task.project_id),
 		);
-		const pagesByTodoistId = new Map<string, ParsedTask>();
-		for (const page of linkedPages) {
-			const id = page.externalId
-				? todoistIdFromExternalId(page.externalId)
-				: null;
-			if (id) pagesByTodoistId.set(id, page);
-		}
-		const activeById = new Map(activeTasks.map((task) => [task.id, task]));
 
-		// 1. Active in Todoist, missing or drifted in Notion (Todoist wins).
-		for (const task of activeTasks) {
-			const page = pagesByTodoistId.get(task.id);
-			if (!page) {
-				if (apply) await upsertFromTodoist(notion, task);
-				summary.createdInNotion++;
-			} else if (isClosedStatus(page.status)) {
-				// Notion says done/cancelled but Todoist still has it active.
-				if (apply) await todoist.closeTask(task.id);
-				summary.closedInTodoist++;
-			} else {
-				const update = notionUpdateFor(task, page);
-				if (update) {
-					if (apply) await updateNotionTask(notion, page.pageId, update);
-					summary.updatedInNotion++;
+		// Reconcile each configured board against the slice of Todoist it owns.
+		for (const board of activeBoards()) {
+			const [linkedPages, openPages] = await Promise.all([
+				listLinkedTasks(notion, board),
+				listOpenTasks(notion, board),
+			]);
+			const boardTasks = activeTasks.filter((task) =>
+				taskBelongsToBoard(task.project_id, board),
+			);
+			const pagesByTodoistId = new Map<string, ParsedTask>();
+			for (const page of linkedPages) {
+				const id = page.externalId
+					? todoistIdFromExternalId(page.externalId)
+					: null;
+				if (id) pagesByTodoistId.set(id, page);
+			}
+			const activeById = new Map(boardTasks.map((task) => [task.id, task]));
+
+			// 1. Active in Todoist, missing or drifted in Notion (Todoist wins).
+			for (const task of boardTasks) {
+				const page = pagesByTodoistId.get(task.id);
+				if (!page) {
+					if (apply) await upsertFromTodoist(notion, board, task);
+					summary.createdInNotion++;
+				} else if (!ownedByUser(page, board)) {
+					// Linked page reassigned away from the user → close in Todoist.
+					if (apply) await todoist.closeTask(task.id);
+					summary.closedInTodoist++;
+				} else if (isClosedStatus(page.status, board)) {
+					// Notion says done/cancelled but Todoist still has it active.
+					if (apply) await todoist.closeTask(task.id);
+					summary.closedInTodoist++;
+				} else {
+					const update = notionUpdateFor(task, page, board);
+					if (update) {
+						if (apply) {
+							await updateNotionTask(notion, board, page.pageId, update);
+						}
+						summary.updatedInNotion++;
+					}
 				}
 			}
-		}
 
-		// 2. Open in Notion: unlinked pages get created in Todoist; linked
-		//    pages missing from the active list were completed or deleted.
-		for (const page of openPages) {
-			const todoistId = page.externalId
-				? todoistIdFromExternalId(page.externalId)
-				: null;
-			if (!todoistId) {
-				if (page.name) {
-					if (apply) await pushPageToTodoist(notion, page);
-					summary.createdInTodoist++;
+			// 2. Open in Notion: unlinked owned pages get created in Todoist;
+			//    linked pages missing from the active list were completed or
+			//    deleted. Pages the user doesn't own are the board owner's
+			//    concern, not the user's Todoist, so they are left alone here
+			//    (a still-active not-owned task is closed by loop 1).
+			for (const page of openPages) {
+				const mine = ownedByUser(page, board);
+				const todoistId = page.externalId
+					? todoistIdFromExternalId(page.externalId)
+					: null;
+				if (!todoistId) {
+					if (page.name && mine) {
+						if (apply) await pushPageToTodoist(notion, board, page);
+						summary.createdInTodoist++;
+					}
+					continue;
 				}
-				continue;
+				if (activeById.has(todoistId)) continue; // handled above
+				if (!mine) continue;
+				const task = await todoist.getTask(todoistId);
+				if (task?.checked) {
+					if (apply) {
+						await updateNotionTask(notion, board, page.pageId, {
+							status: board.status.done,
+						});
+					}
+					summary.completedInNotion++;
+				} else if ((!task || task.is_deleted) && board.status.cancelled) {
+					if (apply) {
+						await updateNotionTask(notion, board, page.pageId, {
+							status: board.status.cancelled,
+						});
+					}
+					summary.cancelledInNotion++;
+				}
 			}
-			if (activeById.has(todoistId)) continue; // handled above
-			const task = await todoist.getTask(todoistId);
-			if (task?.checked) {
-				if (apply) {
-					await updateNotionTask(notion, page.pageId, {
-						status: STATUS.done,
-					});
+
+			// Roll "Today" tasks forward: while a page stays in the today
+			// status, keep its Date (and Todoist due) pinned to today. Recurring
+			// tasks are skipped — Todoist owns their date.
+			if (board.status.today) {
+				const today = todayLocal();
+				for (const page of openPages) {
+					if (page.status !== board.status.today) continue;
+					if (!ownedByUser(page, board)) continue;
+					if (localWhenDate(page.when) === today) continue;
+					const todoistId = page.externalId
+						? todoistIdFromExternalId(page.externalId)
+						: null;
+					const liveTask = todoistId ? activeById.get(todoistId) : undefined;
+					if (liveTask?.due?.is_recurring) continue;
+					if (apply) {
+						await updateNotionTask(notion, board, page.pageId, {
+							when: { start: today },
+						});
+						if (todoistId && liveTask) {
+							await todoist.updateTask(todoistId, { dueDate: today });
+						}
+					}
+					summary.rolledToday++;
 				}
-				summary.completedInNotion++;
-			} else if (!task || task.is_deleted) {
-				if (apply) {
-					await updateNotionTask(notion, page.pageId, {
-						status: STATUS.cancelled,
-					});
-				}
-				summary.cancelledInNotion++;
 			}
 		}
 

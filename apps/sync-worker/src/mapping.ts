@@ -9,13 +9,13 @@
  */
 
 import {
-	STATUS,
+	type Board,
 	notionPriorityFor,
-	openStatusFor,
+	syncTimeZone,
 	todoistPriorityFor,
 } from "./config.js";
 import type { ParsedTask, TaskFields } from "./notion-tasks.js";
-import type { TodoistTask, TodoistTaskFields } from "./todoist.js";
+import type { TodoistDue, TodoistTask, TodoistTaskFields } from "./todoist.js";
 
 /**
  * Compare date values as instants, not strings: Todoist reports UTC
@@ -50,6 +50,22 @@ function wallTime(utcIso: string, timeZone: string): string {
 	const get = (type: string) =>
 		parts.find((part) => part.type === type)?.value ?? "00";
 	return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
+}
+
+/** A Todoist due localized to a calendar date (YYYY-MM-DD), or null. */
+export function localDueDate(due: TodoistDue | null): string | null {
+	if (!due) return null;
+	if (!due.date.includes("T")) return due.date; // date-only (floating)
+	if (due.date.endsWith("Z")) {
+		return wallTime(due.date, due.timezone ?? syncTimeZone()).slice(0, 10);
+	}
+	return due.date.slice(0, 10); // floating datetime
+}
+
+/** A parsed Notion date (its `start`) localized to a calendar date, or null. */
+export function localWhenDate(whenStart: string | null): string | null {
+	// `start` is either a plain date or a wall-clock time (no offset).
+	return whenStart ? whenStart.slice(0, 10) : null;
 }
 
 /** Notion date value for a Todoist due/none, preserving the timezone. */
@@ -93,6 +109,7 @@ export function todoistToNotionFields(task: TodoistTask): TaskFields {
 export function notionUpdateFor(
 	task: TodoistTask,
 	page: ParsedTask,
+	board: Board,
 ): TaskFields | null {
 	const target = todoistToNotionFields(task);
 	const update: TaskFields = {};
@@ -112,23 +129,29 @@ export function notionUpdateFor(
 	// Completion state: either side saying "done" must land in Notion,
 	// but reopens only pull a page back from Done (never from Cancelled —
 	// a cancelled page stays cancelled unless changed in Notion).
-	if (task.checked && !isClosed(page.status)) {
-		update.status = STATUS.done;
-	} else if (!task.checked && page.status === STATUS.done) {
-		update.status = openStatusFor(Boolean(task.due));
-	} else if (!task.checked && page.status === STATUS.inbox && task.due) {
-		// A task sitting in Inbox that gains a due in Todoist must move to
-		// Upcoming: the DB automation "Status = Inbox → Clear Date" would
-		// otherwise wipe the date we just wrote. Other open states
-		// (Anytime/Someday/Today) are deliberate and left untouched.
-		update.status = STATUS.upcoming;
+	if (task.checked && !isClosed(page.status, board)) {
+		update.status = board.status.done;
+	} else if (!task.checked && page.status === board.status.done) {
+		update.status = board.status.openFor(localDueDate(task.due));
+	} else if (
+		!task.checked &&
+		board.automations.inboxClearsDate &&
+		page.status === board.status.inbox &&
+		task.due
+	) {
+		// A task sitting in Inbox that gains a due in Todoist must move on:
+		// the DB automation "Status = Inbox → Clear Date" would otherwise wipe
+		// the date we just wrote. It lands in Today (due today) or Upcoming
+		// (future). Other open states (Anytime/Someday/Today) are deliberate
+		// and left untouched. Boards without that automation never hit this.
+		update.status = board.status.openFor(localDueDate(task.due));
 	}
 
 	return Object.keys(update).length > 0 ? update : null;
 }
 
-function isClosed(status: string | null): boolean {
-	return status === STATUS.done || status === STATUS.cancelled;
+function isClosed(status: string | null, board: Board): boolean {
+	return status === board.status.done || status === board.status.cancelled;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,13 +159,18 @@ function isClosed(status: string | null): boolean {
 // ---------------------------------------------------------------------------
 
 /** The Todoist field values a Notion page implies (content fields only). */
-export function notionToTodoistFields(page: ParsedTask): TodoistTaskFields {
+export function notionToTodoistFields(
+	page: ParsedTask,
+	board: Board,
+): TodoistTaskFields {
 	return {
 		content: page.name,
 		description: page.notes,
 		dueDate: page.when,
 		priority: todoistPriorityFor(page.priority),
 		labels: page.labels,
+		// Only meaningful on create; determines which project the task lands in.
+		projectId: board.todoistProjectId ?? undefined,
 	};
 }
 

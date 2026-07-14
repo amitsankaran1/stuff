@@ -43,6 +43,8 @@ export interface TodoistTaskFields {
 	priority?: number;
 	/** Full label set (names); replaces the task's labels. */
 	labels?: string[];
+	/** Project to create the task in; only honored on create. */
+	projectId?: string;
 }
 
 type Wait = () => Promise<void>;
@@ -63,6 +65,7 @@ function buildBody(fields: TodoistTaskFields): Record<string, unknown> {
 	}
 	if (fields.priority !== undefined) body.priority = fields.priority;
 	if (fields.labels !== undefined) body.labels = fields.labels;
+	if (fields.projectId !== undefined) body.project_id = fields.projectId;
 	return body;
 }
 

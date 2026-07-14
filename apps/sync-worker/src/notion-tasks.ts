@@ -1,14 +1,18 @@
 /**
- * Accessors for the Personal Tasks database via the Notion public API
+ * Accessors for a board's task database via the Notion public API
  * (@notionhq/client v5: data-source queries, data_source_id parents).
+ * Every function takes the {@link Board} it operates on, so the same code
+ * serves the personal and apartment databases.
  */
 
 import type { Client } from "@notionhq/client";
-import { PROP, STATUS, env } from "./config.js";
+import { type Board, TODOIST_ID_PREFIX, boardForDataSource } from "./config.js";
 
-/** A Personal Tasks page parsed into plain values. */
+/** A task page parsed into plain values. */
 export interface ParsedTask {
 	pageId: string;
+	/** Data source the page lives in (identifies its board). */
+	parentDataSourceId: string | null;
 	name: string;
 	status: string | null;
 	when: string | null;
@@ -16,11 +20,13 @@ export interface ParsedTask {
 	externalId: string | null;
 	priority: string | null;
 	labels: string[];
+	/** People (user ids) in the board's owner property; empty when none. */
+	owner: string[];
 	lastEditedTime: string;
 	lastEditedBy: string | null;
 }
 
-/** The subset of fields this worker writes to a Personal Tasks page. */
+/** The subset of fields this worker writes to a task page. */
 export interface TaskFields {
 	name?: string;
 	status?: string;
@@ -31,10 +37,12 @@ export interface TaskFields {
 	/** Select option name; null clears the selection. */
 	priority?: string | null;
 	labels?: string[];
+	/** People user ids; empty array clears. Ignored if the board has no owner. */
+	owner?: string[];
 }
 
-export function isClosedStatus(status: string | null): boolean {
-	return status === STATUS.done || status === STATUS.cancelled;
+export function isClosedStatus(status: string | null, board: Board): boolean {
+	return status === board.status.done || status === board.status.cancelled;
 }
 
 // ---------------------------------------------------------------------------
@@ -47,19 +55,24 @@ function plainText(fragments: Array<{ plain_text: string }> | undefined): string
 	return (fragments ?? []).map((f) => f.plain_text).join("");
 }
 
-export function parseTask(page: any): ParsedTask {
+export function parseTask(page: any, board: Board): ParsedTask {
 	const props = page.properties as AnyProps;
+	const P = board.prop;
 	return {
 		pageId: page.id as string,
-		name: plainText(props[PROP.name]?.title),
-		status: props[PROP.status]?.status?.name ?? null,
-		when: props[PROP.when]?.date?.start ?? null,
-		notes: plainText(props[PROP.notes]?.rich_text),
-		externalId: plainText(props[PROP.externalId]?.rich_text) || null,
-		priority: props[PROP.priority]?.select?.name ?? null,
-		labels: (props[PROP.labels]?.multi_select ?? []).map(
+		parentDataSourceId: page.parent?.data_source_id ?? null,
+		name: plainText(props[P.name]?.title),
+		status: props[P.status]?.status?.name ?? null,
+		when: props[P.when]?.date?.start ?? null,
+		notes: plainText(props[P.notes]?.rich_text),
+		externalId: plainText(props[P.externalId]?.rich_text) || null,
+		priority: props[P.priority]?.select?.name ?? null,
+		labels: (props[P.labels]?.multi_select ?? []).map(
 			(option: { name: string }) => option.name,
 		),
+		owner: P.owner
+			? (props[P.owner]?.people ?? []).map((u: { id: string }) => u.id)
+			: [],
 		lastEditedTime: page.last_edited_time as string,
 		lastEditedBy: page.last_edited_by?.id ?? null,
 	};
@@ -79,16 +92,17 @@ export async function getBotUserId(notion: Client): Promise<string> {
 // Property building
 // ---------------------------------------------------------------------------
 
-export function buildProps(fields: TaskFields): AnyProps {
+export function buildProps(fields: TaskFields, board: Board): AnyProps {
 	const props: AnyProps = {};
+	const P = board.prop;
 	if (fields.name !== undefined) {
-		props[PROP.name] = { title: [{ text: { content: fields.name } }] };
+		props[P.name] = { title: [{ text: { content: fields.name } }] };
 	}
 	if (fields.status !== undefined) {
-		props[PROP.status] = { status: { name: fields.status } };
+		props[P.status] = { status: { name: fields.status } };
 	}
 	if (fields.when !== undefined) {
-		props[PROP.when] = {
+		props[P.when] = {
 			date: fields.when
 				? {
 						start: fields.when.start,
@@ -100,24 +114,27 @@ export function buildProps(fields: TaskFields): AnyProps {
 		};
 	}
 	if (fields.notes !== undefined) {
-		props[PROP.notes] = {
+		props[P.notes] = {
 			rich_text: fields.notes ? [{ text: { content: fields.notes } }] : [],
 		};
 	}
 	if (fields.externalId !== undefined) {
-		props[PROP.externalId] = {
+		props[P.externalId] = {
 			rich_text: [{ text: { content: fields.externalId } }],
 		};
 	}
 	if (fields.priority !== undefined) {
-		props[PROP.priority] = {
+		props[P.priority] = {
 			select: fields.priority ? { name: fields.priority } : null,
 		};
 	}
 	if (fields.labels !== undefined) {
-		props[PROP.labels] = {
+		props[P.labels] = {
 			multi_select: fields.labels.map((name) => ({ name })),
 		};
+	}
+	if (fields.owner !== undefined && P.owner) {
+		props[P.owner] = { people: fields.owner.map((id) => ({ id })) };
 	}
 	return props;
 }
@@ -126,17 +143,16 @@ export function buildProps(fields: TaskFields): AnyProps {
 // Queries and writes
 // ---------------------------------------------------------------------------
 
-function dataSourceId(): string {
-	// Not NOTION_-prefixed: that prefix is reserved by the workers runtime.
-	return env("STUFF_TASKS_DATA_SOURCE_ID");
-}
-
-async function queryAll(notion: Client, filter: unknown): Promise<any[]> {
+async function queryAll(
+	notion: Client,
+	board: Board,
+	filter: unknown,
+): Promise<any[]> {
 	const pages: any[] = [];
 	let cursor: string | undefined;
 	do {
 		const response: any = await (notion as any).dataSources.query({
-			data_source_id: dataSourceId(),
+			data_source_id: board.dataSourceId,
 			filter,
 			start_cursor: cursor,
 			page_size: 100,
@@ -150,13 +166,31 @@ async function queryAll(notion: Client, filter: unknown): Promise<any[]> {
 /** Find the page mapped to an External ID value (e.g. "todoist:<id>"). */
 export async function findByExternalId(
 	notion: Client,
+	board: Board,
 	externalId: string,
 ): Promise<ParsedTask | null> {
-	const pages = await queryAll(notion, {
-		property: PROP.externalId,
+	const pages = await queryAll(notion, board, {
+		property: board.prop.externalId,
 		rich_text: { equals: externalId },
 	});
-	return pages.length > 0 ? parseTask(pages[0]) : null;
+	return pages.length > 0 ? parseTask(pages[0], board) : null;
+}
+
+/**
+ * Find the page mapped to an External ID across all boards, returning the
+ * page and the board it lives in. Used to detect Todoist project moves so a
+ * task that already exists in one database is not duplicated into another.
+ */
+export async function findByExternalIdAnyBoard(
+	notion: Client,
+	boards: Board[],
+	externalId: string,
+): Promise<{ page: ParsedTask; board: Board } | null> {
+	for (const board of boards) {
+		const page = await findByExternalId(notion, board, externalId);
+		if (page) return { page, board };
+	}
+	return null;
 }
 
 /**
@@ -165,62 +199,82 @@ export async function findByExternalId(
  */
 export async function findUnlinkedByName(
 	notion: Client,
+	board: Board,
 	name: string,
 ): Promise<ParsedTask | null> {
-	const pages = await queryAll(notion, {
+	const pages = await queryAll(notion, board, {
 		and: [
-			{ property: PROP.name, title: { equals: name } },
-			{ property: PROP.externalId, rich_text: { is_empty: true } },
+			{ property: board.prop.name, title: { equals: name } },
+			{ property: board.prop.externalId, rich_text: { is_empty: true } },
 		],
 	});
-	return pages.length > 0 ? parseTask(pages[0]) : null;
+	return pages.length > 0 ? parseTask(pages[0], board) : null;
 }
 
 /** All pages already linked to Todoist (any status). */
-export async function listLinkedTasks(notion: Client): Promise<ParsedTask[]> {
-	const pages = await queryAll(notion, {
-		property: PROP.externalId,
-		rich_text: { starts_with: "todoist:" },
+export async function listLinkedTasks(
+	notion: Client,
+	board: Board,
+): Promise<ParsedTask[]> {
+	const pages = await queryAll(notion, board, {
+		property: board.prop.externalId,
+		rich_text: { starts_with: TODOIST_ID_PREFIX },
 	});
-	return pages.map(parseTask);
+	return pages.map((page) => parseTask(page, board));
 }
 
 /** All open (not Done/Cancelled) tasks. */
-export async function listOpenTasks(notion: Client): Promise<ParsedTask[]> {
-	const pages = await queryAll(notion, {
+export async function listOpenTasks(
+	notion: Client,
+	board: Board,
+): Promise<ParsedTask[]> {
+	const pages = await queryAll(notion, board, {
 		and: [
-			{ property: PROP.status, status: { does_not_equal: STATUS.done } },
-			{ property: PROP.status, status: { does_not_equal: STATUS.cancelled } },
+			{
+				property: board.prop.status,
+				status: { does_not_equal: board.status.done },
+			},
+			{
+				property: board.prop.status,
+				status: { does_not_equal: board.status.cancelled },
+			},
 		],
 	});
-	return pages.map(parseTask);
+	return pages.map((page) => parseTask(page, board));
 }
 
+/** Retrieve a page and the board it belongs to (resolved from its parent). */
 export async function getTask(
 	notion: Client,
 	pageId: string,
-): Promise<ParsedTask> {
-	const page = await notion.pages.retrieve({ page_id: pageId });
-	return parseTask(page);
+): Promise<{ page: ParsedTask; board: Board }> {
+	const raw: any = await notion.pages.retrieve({ page_id: pageId });
+	const board = boardForDataSource(raw.parent?.data_source_id ?? null);
+	return { page: parseTask(raw, board), board };
 }
 
 export async function createTask(
 	notion: Client,
+	board: Board,
 	fields: TaskFields,
 ): Promise<string> {
 	const page: any = await notion.pages.create({
-		parent: { type: "data_source_id", data_source_id: dataSourceId() } as any,
-		properties: buildProps(fields),
+		parent: {
+			type: "data_source_id",
+			data_source_id: board.dataSourceId,
+		} as any,
+		properties: buildProps(fields, board),
 	});
 	return page.id as string;
 }
 
 export async function updateTask(
 	notion: Client,
+	board: Board,
 	pageId: string,
 	fields: TaskFields,
 ): Promise<void> {
-	const props = buildProps(fields);
+	const props = buildProps(fields, board);
 	if (Object.keys(props).length === 0) return;
 	await notion.pages.update({ page_id: pageId, properties: props });
 }
