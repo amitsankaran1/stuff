@@ -47,6 +47,26 @@ export interface TodoistTaskFields {
 	projectId?: string;
 }
 
+/** A file attached to a Todoist comment. */
+export interface TodoistFileAttachment {
+	resource_type?: string;
+	file_name: string;
+	file_url: string;
+	file_type?: string; // MIME type
+	file_size?: number;
+	upload_state?: string;
+}
+
+/** A Todoist task comment (note). */
+export interface TodoistComment {
+	id: string;
+	/** Present on note webhook payloads; the task the note belongs to. */
+	item_id?: string;
+	content: string;
+	posted_at?: string;
+	file_attachment: TodoistFileAttachment | null;
+}
+
 type Wait = () => Promise<void>;
 
 function buildBody(fields: TodoistTaskFields): Record<string, unknown> {
@@ -142,5 +162,103 @@ export class TodoistClient {
 
 	async reopenTask(id: string): Promise<void> {
 		await this.#request("POST", `/tasks/${id}/reopen`);
+	}
+
+	// -------------------------------------------------------------------------
+	// Comments & file attachments
+	// -------------------------------------------------------------------------
+
+	/** POST a multipart/form-data body (uploads); no JSON Content-Type. */
+	async #requestForm(path: string, form: FormData): Promise<Response> {
+		await this.#wait();
+		const response = await fetch(`${BASE_URL}${path}`, {
+			method: "POST",
+			// Do not set Content-Type: the runtime adds the multipart boundary.
+			headers: { Authorization: `Bearer ${env("TODOIST_API_TOKEN")}` },
+			body: form,
+		});
+		if (!response.ok) {
+			const text = await response.text();
+			throw new Error(`Todoist POST ${path} failed: ${response.status} ${text}`);
+		}
+		return response;
+	}
+
+	/** GET raw bytes. Sends the bearer only for Todoist-hosted URLs. */
+	async #requestBinary(url: string, sendAuth: boolean): Promise<Response> {
+		await this.#wait();
+		const response = await fetch(url, {
+			headers: sendAuth
+				? { Authorization: `Bearer ${env("TODOIST_API_TOKEN")}` }
+				: {},
+		});
+		if (!response.ok) {
+			throw new Error(`Todoist GET ${url} failed: ${response.status}`);
+		}
+		return response;
+	}
+
+	/** All comments on a task, following cursor pagination. */
+	async listComments(taskId: string): Promise<TodoistComment[]> {
+		const comments: TodoistComment[] = [];
+		let cursor: string | null = null;
+		do {
+			const query = cursor
+				? `?task_id=${taskId}&limit=200&cursor=${encodeURIComponent(cursor)}`
+				: `?task_id=${taskId}&limit=200`;
+			const response = await this.#request("GET", `/comments${query}`);
+			const body = (await response.json()) as
+				| { results: TodoistComment[]; next_cursor: string | null }
+				| TodoistComment[];
+			if (Array.isArray(body)) {
+				comments.push(...body);
+				cursor = null;
+			} else {
+				comments.push(...body.results);
+				cursor = body.next_cursor;
+			}
+		} while (cursor);
+		return comments;
+	}
+
+	/** Upload a file, returning the attachment object to attach to a comment. */
+	async uploadFile(
+		fileName: string,
+		contentType: string | undefined,
+		data: Blob,
+	): Promise<TodoistFileAttachment> {
+		const form = new FormData();
+		form.append("file_name", fileName);
+		form.append(
+			"file",
+			contentType ? new Blob([data], { type: contentType }) : data,
+			fileName,
+		);
+		const response = await this.#requestForm("/uploads", form);
+		return (await response.json()) as TodoistFileAttachment;
+	}
+
+	/** Create a comment carrying a file attachment. */
+	async createComment(
+		taskId: string,
+		content: string,
+		attachment: TodoistFileAttachment,
+	): Promise<TodoistComment> {
+		const response = await this.#request("POST", "/comments", {
+			task_id: taskId,
+			content,
+			attachment,
+		});
+		return (await response.json()) as TodoistComment;
+	}
+
+	async deleteComment(commentId: string): Promise<void> {
+		await this.#request("DELETE", `/comments/${commentId}`);
+	}
+
+	/** Download a Todoist-hosted attachment's bytes. */
+	async downloadAttachment(fileUrl: string): Promise<Blob> {
+		const response = await this.#requestBinary(fileUrl, true);
+		return await response.blob();
 	}
 }

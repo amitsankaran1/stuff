@@ -52,6 +52,7 @@ import {
 	type ParsedTask,
 } from "./notion-tasks.js";
 import { TodoistClient, type TodoistTask } from "./todoist.js";
+import { reconcileAttachments } from "./attachments.js";
 
 const worker = new Worker();
 // `ntn workers exec --local` resolves the worker via `mod.default.default`
@@ -171,6 +172,33 @@ worker.webhook("todoist", {
 		for (const event of events) {
 			verifyTodoistSignature(event.rawBody, event.headers);
 			const payload = event.body as unknown as TodoistWebhookPayload;
+
+			// Comment/note events carry a note (with item_id), not a task, and
+			// drive attachment sync. Handle before the task-shaped path below.
+			if (payload.event_name.startsWith("note:")) {
+				const note = payload.event_data as unknown as { item_id?: string };
+				if (!note.item_id) continue;
+				const existing = await findByExternalIdAnyBoard(
+					notion,
+					activeBoards(),
+					todoistExternalId(note.item_id),
+				);
+				if (existing?.board.prop.attachments) {
+					const result = await reconcileAttachments(
+						notion,
+						todoist,
+						existing.board,
+						existing.page,
+						note.item_id,
+						true,
+					);
+					console.log(
+						`${payload.event_name} ${note.item_id}: ${JSON.stringify(result)}`,
+					);
+				}
+				continue;
+			}
+
 			const task = payload.event_data;
 			if (!task?.id) continue;
 			if (task.project_id && excludedTodoistProjectIds().has(task.project_id)) {
@@ -383,6 +411,22 @@ worker.webhook("notionPush", {
 			}
 			const result = await pushPageToTodoist(notion, board, page);
 			console.log(`notionPush ${pageId}: ${result}`);
+
+			// Sync file attachments (the Attachments property triggers this too).
+			const todoistId = page.externalId
+				? todoistIdFromExternalId(page.externalId)
+				: null;
+			if (todoistId && board.prop.attachments) {
+				const att = await reconcileAttachments(
+					notion,
+					todoist,
+					board,
+					page,
+					todoistId,
+					true,
+				);
+				console.log(`notionPush ${pageId}: attachments ${JSON.stringify(att)}`);
+			}
 		}
 	},
 });
@@ -411,6 +455,10 @@ worker.tool("reconcile", {
 			completedInNotion: 0,
 			cancelledInNotion: 0,
 			rolledToday: 0,
+			attachmentsToNotion: 0,
+			attachmentsToTodoist: 0,
+			attachmentsDeletedNotion: 0,
+			attachmentsDeletedTodoist: 0,
 		};
 
 		const excluded = excludedTodoistProjectIds();
@@ -522,6 +570,28 @@ worker.tool("reconcile", {
 						}
 					}
 					summary.rolledToday++;
+				}
+			}
+
+			// Attachment backstop: reconcile files for each linked, owned page.
+			if (board.prop.attachments) {
+				for (const page of linkedPages) {
+					const todoistId = page.externalId
+						? todoistIdFromExternalId(page.externalId)
+						: null;
+					if (!todoistId || !ownedByUser(page, board)) continue;
+					const att = await reconcileAttachments(
+						notion,
+						todoist,
+						board,
+						page,
+						todoistId,
+						apply,
+					);
+					summary.attachmentsToNotion += att.toNotion;
+					summary.attachmentsToTodoist += att.toTodoist;
+					summary.attachmentsDeletedNotion += att.deletedNotion;
+					summary.attachmentsDeletedTodoist += att.deletedTodoist;
 				}
 			}
 		}

@@ -22,6 +22,10 @@ export interface ParsedTask {
 	labels: string[];
 	/** People (user ids) in the board's owner property; empty when none. */
 	owner: string[];
+	/** Files in the board's attachments property; empty when none/unconfigured. */
+	attachments: Array<{ name: string; kind: "file" | "external"; url: string }>;
+	/** Raw JSON of the attachment sync manifest ("" when none/unconfigured). */
+	syncManifest: string;
 	lastEditedTime: string;
 	lastEditedBy: string | null;
 }
@@ -73,6 +77,16 @@ export function parseTask(page: any, board: Board): ParsedTask {
 		owner: P.owner
 			? (props[P.owner]?.people ?? []).map((u: { id: string }) => u.id)
 			: [],
+		attachments: P.attachments
+			? (props[P.attachments]?.files ?? []).map((f: any) => ({
+					name: f.name as string,
+					kind: f.type as "file" | "external",
+					url: (f.type === "file" ? f.file?.url : f.external?.url) as string,
+				}))
+			: [],
+		syncManifest: P.syncManifest
+			? plainText(props[P.syncManifest]?.rich_text)
+			: "",
 		lastEditedTime: page.last_edited_time as string,
 		lastEditedBy: page.last_edited_by?.id ?? null,
 	};

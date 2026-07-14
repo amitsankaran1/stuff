@@ -106,6 +106,10 @@ export interface BoardProps {
 	labels: string;
 	/** People property to filter/attribute by; only set for shared boards. */
 	owner?: string;
+	/** Files & media property that mirrors a task's file attachments. */
+	attachments?: string;
+	/** Hidden rich_text property holding the attachment sync manifest (JSON). */
+	syncManifest?: string;
 }
 
 /** A board's status model. */
@@ -186,6 +190,8 @@ const personal: Board = {
 		externalId: "External ID",
 		priority: "Priority",
 		labels: "Labels",
+		attachments: "Attachments",
+		syncManifest: "Sync Manifest",
 	},
 	status: {
 		done: "Done",
@@ -229,6 +235,8 @@ const apartment: Board = {
 		priority: "Priority",
 		labels: "Labels",
 		owner: "Owner",
+		attachments: "Attachments",
+		syncManifest: "Sync Manifest",
 	},
 	status: {
 		done: "Done",
