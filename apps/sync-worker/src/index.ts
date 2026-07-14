@@ -17,6 +17,8 @@
 import crypto from "crypto";
 import { Worker, WebhookVerificationError } from "@notionhq/workers";
 import { j } from "@notionhq/workers/schema-builder";
+import * as Schema from "@notionhq/workers/schema";
+import * as Builder from "@notionhq/workers/builder";
 import { Client } from "@notionhq/client";
 
 import {
@@ -435,17 +437,16 @@ worker.webhook("notionPush", {
 // Reconcile: two-way backstop / initial backfill
 // ---------------------------------------------------------------------------
 
-worker.tool("reconcile", {
-	title: "Reconcile Todoist and Stuff Tasks",
-	description:
-		"Two-way reconcile between Todoist and the Stuff Tasks database: creates missing counterparts, converges field drift (Todoist wins), and resolves completion mismatches (done wins). Set apply=false to preview.",
-	schema: j.object({
-		apply: j
-			.boolean()
-			.describe("true to write changes; false for a dry-run report."),
-	}),
-	execute: async ({ apply }, context) => {
-		const notion = getNotion(context);
+/**
+ * Two-way reconcile of every configured board. `includeAttachments` gates the
+ * heavy per-task comment sweep so the scheduled daily run stays lean (webhooks
+ * keep attachments current in real time; the manual tool does the full sweep).
+ */
+async function runReconcile(
+	notion: Client,
+	apply: boolean,
+	includeAttachments: boolean,
+) {
 		const summary = {
 			createdInNotion: 0,
 			createdInTodoist: 0,
@@ -574,7 +575,7 @@ worker.tool("reconcile", {
 			}
 
 			// Attachment backstop: reconcile files for each linked, owned page.
-			if (board.prop.attachments) {
+			if (includeAttachments && board.prop.attachments) {
 				for (const page of linkedPages) {
 					const todoistId = page.externalId
 						? todoistIdFromExternalId(page.externalId)
@@ -597,5 +598,62 @@ worker.tool("reconcile", {
 		}
 
 		return { applied: apply, ...summary };
+}
+
+worker.tool("reconcile", {
+	title: "Reconcile Todoist and Stuff Tasks",
+	description:
+		"Two-way reconcile between Todoist and the Stuff Tasks database: creates missing counterparts, converges field drift (Todoist wins), resolves completion mismatches (done wins), and syncs attachments. Set apply=false to preview.",
+	schema: j.object({
+		apply: j
+			.boolean()
+			.describe("true to write changes; false for a dry-run report."),
+	}),
+	execute: async ({ apply }, context) =>
+		runReconcile(getNotion(context), apply, true),
+});
+
+// ---------------------------------------------------------------------------
+// Scheduled daily reconcile. Worker tools can't self-schedule, so a sync
+// (which can) runs the reconcile daily and logs a one-row summary. Attachments
+// are excluded here (webhooks keep them current; the sweep is heavy) — run the
+// `reconcile` tool manually for a full attachment reconciliation.
+// ---------------------------------------------------------------------------
+
+const reconcileLog = worker.database("reconcileLog", {
+	type: "managed",
+	initialTitle: "stuff-sync — Reconcile Log",
+	primaryKeyProperty: "Key",
+	schema: {
+		properties: {
+			"Last Run": Schema.title(),
+			Key: Schema.richText(),
+			Summary: Schema.richText(),
+		},
+	},
+});
+
+worker.sync("dailyReconcile", {
+	database: reconcileLog,
+	mode: "replace",
+	schedule: "1d",
+	execute: async (_state, context) => {
+		const notion = getNotion(context);
+		const result = await runReconcile(notion, true, false);
+		const ranAt = new Date().toISOString();
+		return {
+			changes: [
+				{
+					type: "upsert" as const,
+					key: "latest",
+					properties: {
+						"Last Run": Builder.title(ranAt),
+						Key: Builder.richText("latest"),
+						Summary: Builder.richText(JSON.stringify(result)),
+					},
+				},
+			],
+			hasMore: false,
+		};
 	},
 });
