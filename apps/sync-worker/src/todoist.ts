@@ -164,6 +164,34 @@ export class TodoistClient {
 		await this.#request("POST", `/tasks/${id}/reopen`);
 	}
 
+	/**
+	 * The account's configured IANA timezone (e.g. "America/Los_Angeles"),
+	 * or null if unavailable. Read from the Sync API's user resource so the
+	 * worker's notion of "today" tracks whatever zone Todoist itself resolves
+	 * due dates in. The /sync endpoint expects form-encoded params, not JSON.
+	 */
+	async getTimeZone(): Promise<string | null> {
+		await this.#wait();
+		const response = await fetch(`${BASE_URL}/sync`, {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${env("TODOIST_API_TOKEN")}`,
+				"Content-Type": "application/x-www-form-urlencoded",
+			},
+			body: new URLSearchParams({
+				sync_token: "*",
+				resource_types: '["user"]',
+			}),
+		});
+		if (!response.ok) {
+			throw new Error(`Todoist POST /sync failed: ${response.status}`);
+		}
+		const data = (await response.json()) as {
+			user?: { timezone?: string; tz_info?: { timezone?: string } };
+		};
+		return data.user?.tz_info?.timezone ?? data.user?.timezone ?? null;
+	}
+
 	// -------------------------------------------------------------------------
 	// Comments & file attachments
 	// -------------------------------------------------------------------------

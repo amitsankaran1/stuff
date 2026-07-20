@@ -25,6 +25,7 @@ import {
 	boardForTodoistProject,
 	env,
 	excludedTodoistProjectIds,
+	setSyncTimeZone,
 	taskBelongsToBoard,
 	todayLocal,
 	todoistExternalId,
@@ -76,6 +77,22 @@ async function todoistWait(): Promise<void> {
 }
 
 const todoist = new TodoistClient(todoistWait);
+
+// Keep the worker's "today" aligned with the Todoist account timezone.
+// Memoized per process with a TTL so a warm runtime does not re-fetch on
+// every webhook; a cold start pays one extra Sync call. The timestamp
+// advances only on success, so transient failures retry and self-heal.
+let tzCheckedAt = 0;
+const TZ_TTL_MS = 6 * 60 * 60 * 1000;
+async function refreshTimeZone(): Promise<void> {
+	if (Date.now() - tzCheckedAt < TZ_TTL_MS) return;
+	try {
+		setSyncTimeZone(await todoist.getTimeZone());
+		tzCheckedAt = Date.now();
+	} catch (error) {
+		console.log("timezone refresh failed, using fallback:", error);
+	}
+}
 
 /**
  * The platform pre-authenticates context.notion only for agent-invoked
@@ -168,6 +185,7 @@ worker.webhook("todoist", {
 	description:
 		"Receives Todoist item webhooks and mirrors them into the Stuff Tasks database.",
 	execute: async (events, context) => {
+		await refreshTimeZone();
 		const notion = getNotion(context);
 		for (const event of events) {
 			verifyTodoistSignature(event.rawBody, event.headers);
@@ -385,6 +403,7 @@ worker.webhook("notionPush", {
 	description:
 		"Target of the Personal Tasks database automation (page added / property edited → Send webhook): mirrors Notion-side changes to Todoist.",
 	execute: async (events, context) => {
+		await refreshTimeZone();
 		const notion = getNotion(context);
 		for (const event of events) {
 			// Notion automation webhooks post the triggering page under
@@ -445,6 +464,7 @@ worker.tool("reconcile", {
 			.describe("true to write changes; false for a dry-run report."),
 	}),
 	execute: async ({ apply }, context) => {
+		await refreshTimeZone();
 		const notion = getNotion(context);
 		const summary = {
 			createdInNotion: 0,

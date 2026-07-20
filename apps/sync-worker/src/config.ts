@@ -138,9 +138,31 @@ export interface BoardStatus {
 	today?: string;
 }
 
+// Resolved from the Todoist account at runtime (see setSyncTimeZone). Keeps
+// the worker's "today" aligned with whatever zone Todoist resolves due dates
+// in, so a task marked "Today" late in the evening is not misread as future.
+let resolvedTimeZone: string | null = null;
+
 /** IANA timezone used to decide what "today" is for the Today↔due coupling. */
 export function syncTimeZone(): string {
-	return process.env.TIMEZONE ?? "America/New_York";
+	return resolvedTimeZone ?? process.env.TIMEZONE ?? "America/New_York";
+}
+
+/**
+ * Override the timezone with a runtime-resolved value. Invalid or null clears
+ * the override so {@link syncTimeZone} falls back to TIMEZONE, then New York.
+ */
+export function setSyncTimeZone(tz: string | null): void {
+	if (tz) {
+		try {
+			new Intl.DateTimeFormat("en-CA", { timeZone: tz });
+			resolvedTimeZone = tz;
+			return;
+		} catch {
+			// Not a valid IANA zone — fall through to clear.
+		}
+	}
+	resolvedTimeZone = null;
 }
 
 /** Today's calendar date (YYYY-MM-DD) in {@link syncTimeZone}. */
@@ -200,7 +222,10 @@ const personal: Board = {
 		today: "Today",
 		openFor: (dueLocalDate) => {
 			if (!dueLocalDate) return "Inbox";
-			return dueLocalDate === todayLocal() ? "Today" : "Upcoming";
+			// Overdue counts as Today; only a future date is Upcoming (matching
+			// the DB's "Future Date → Status = Upcoming" automation). ISO dates
+			// are fixed-width, so lexicographic <= is a correct date compare.
+			return dueLocalDate <= todayLocal() ? "Today" : "Upcoming";
 		},
 	},
 	automations: { inboxClearsDate: true },
