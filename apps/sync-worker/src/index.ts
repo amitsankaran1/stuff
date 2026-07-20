@@ -264,6 +264,7 @@ worker.webhook("todoist", {
 					);
 					if (
 						existing &&
+						existing.board.status.cancelled &&
 						!isClosedStatus(existing.page.status, existing.board)
 					) {
 						await updateNotionTask(notion, existing.board, existing.page.pageId, {

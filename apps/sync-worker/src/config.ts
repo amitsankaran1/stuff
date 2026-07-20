@@ -116,9 +116,9 @@ export interface BoardProps {
 export interface BoardStatus {
 	done: string;
 	/**
-	 * Terminal "won't do" status a Todoist delete maps to. Optional: boards
-	 * without one (e.g. apartment) ignore Todoist deletes — the task leaves
-	 * Todoist but the Notion page is untouched.
+	 * Terminal "won't do" status a Todoist delete maps to. Optional: a board
+	 * without one ignores Todoist deletes (the page is left untouched). Both
+	 * boards currently define "Won't Do".
 	 */
 	cancelled?: string;
 	/**
@@ -217,7 +217,7 @@ const personal: Board = {
 	},
 	status: {
 		done: "Done",
-		cancelled: "Cancelled",
+		cancelled: "Won't Do",
 		inbox: "Inbox",
 		today: "Today",
 		openFor: (dueLocalDate) => {
@@ -265,11 +265,20 @@ const apartment: Board = {
 	},
 	status: {
 		done: "Done",
-		// No "Cancelled" state: a Todoist delete leaves the shared page alone.
-		openFor: () => "Not started",
+		// A Todoist delete lands here (mirrors personal), so the shared page is
+		// marked "Won't Do" rather than silently orphaned when it leaves Todoist.
+		cancelled: "Won't Do",
+		today: "Today",
+		// Mirrors personal: the Date (the day you intend to do a task) buckets
+		// it, and marking Today pins that Date to today. Apartment has no Inbox,
+		// so undated tasks stay "Not started" instead.
+		openFor: (dueLocalDate) => {
+			if (!dueLocalDate) return "Not started";
+			return dueLocalDate <= todayLocal() ? "Today" : "Upcoming";
+		},
 	},
+	// No Inbox / inbox-clears-date automation on this shared board.
 	automations: { inboxClearsDate: false },
-	// No "today" status: the Today↔due coupling is personal-only.
 	ownerFilter: { prop: "Owner", userId: APARTMENT_OWNER_USER_ID },
 };
 

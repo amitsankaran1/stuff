@@ -242,18 +242,21 @@ export async function listOpenTasks(
 	notion: Client,
 	board: Board,
 ): Promise<ParsedTask[]> {
-	const pages = await queryAll(notion, board, {
-		and: [
-			{
-				property: board.prop.status,
-				status: { does_not_equal: board.status.done },
-			},
-			{
-				property: board.prop.status,
-				status: { does_not_equal: board.status.cancelled },
-			},
-		],
-	});
+	const and: unknown[] = [
+		{
+			property: board.prop.status,
+			status: { does_not_equal: board.status.done },
+		},
+	];
+	// Only boards with a "won't do" state (e.g. personal) filter it out; the
+	// apartment board has none, and an undefined value fails filter validation.
+	if (board.status.cancelled) {
+		and.push({
+			property: board.prop.status,
+			status: { does_not_equal: board.status.cancelled },
+		});
+	}
+	const pages = await queryAll(notion, board, { and });
 	return pages.map((page) => parseTask(page, board));
 }
 
